@@ -2,7 +2,11 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="format-detection" content="telephone=no">
     <title>Battle City Low Poly - Phase 5 Defend The Eagle</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -18,7 +22,7 @@
             margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden;
             background-color: #080a0f; font-family: 'Press Start 2P', monospace; touch-action: none;
         }
-        canvas { display: block; width: 100vw; height: 100vh; }
+        #webgl-canvas { display: block; width: 100vw; height: 100vh; }
         .arcade-shadow { text-shadow: 3px 3px 0px #000, -2px -2px 0px #ff2a2a; }
         .arcade-box { box-shadow: 0px 6px 0px rgba(0,0,0,0.55), 0px 0px 24px rgba(0, 0, 0, 0.7), inset 0px 0px 12px rgba(255, 255, 255, 0.08); border: 4px solid #3b82f6; }
         .fire-btn-active { transform: scale(0.92) !important; box-shadow: 0px 0px 15px #ef4444 !important; }
@@ -63,6 +67,25 @@
 
         /* ---------- Countdown ---------- */
         #countdown-overlay.hidden, #intro-overlay.hidden { display: none; }
+        /* ---------- QR zoom on hover ---------- */
+        .qr-zoom { transition: transform 0.25s ease, box-shadow 0.25s; position: relative; z-index: 1; cursor: zoom-in; }
+        .qr-zoom:hover, .qr-zoom.zoomed { transform: scale(2.1); z-index: 60; box-shadow: 0 0 0 6px #facc15, 0 20px 60px rgba(0,0,0,0.8); }
+        .qr-zoom.origin-left:hover, .qr-zoom.origin-left.zoomed { transform-origin: top left; }
+        .hud-panel { display: none; }
+        .hud-panel.open { display: block; }
+        #squad-canvas { display: block; width: 100%; height: 210px; }
+        .kick-btn { font-size: 9px; padding: 2px 6px; border-radius: 6px; border: 1px solid rgba(248,113,113,0.6); color: #fca5a5; background: rgba(127,29,29,0.35); cursor: pointer; }
+        .kick-btn:hover { background: rgba(185,28,28,0.7); color: #fff; }
+        #toast { position: fixed; left: 50%; bottom: 92px; transform: translateX(-50%) translateY(20px); opacity: 0; z-index: 70; transition: all 0.3s; pointer-events: none;
+            background: rgba(15,23,42,0.95); border: 2px solid #facc15; color: #fff; font-size: 10px; padding: 10px 16px; border-radius: 12px; box-shadow: 0 8px 30px rgba(0,0,0,0.6); }
+        #toast.show { opacity: 1; transform: translateX(-50%); }
+        .lb-row.me { background: rgba(250,204,21,0.18); outline: 1px solid rgba(250,204,21,0.7); }
+        /* ---------- Phone controller: no zoom, no scroll, no selection (iOS + Android) ---------- */
+        body.is-controller, body.is-controller * { touch-action: none; -webkit-tap-highlight-color: transparent; }
+        body.is-controller { position: fixed; inset: 0; overscroll-behavior: none; -webkit-text-size-adjust: 100%; }
+        body.is-controller input { touch-action: manipulation; font-size: 16px !important; -webkit-user-select: text; user-select: text; }
+        #controller-view { padding-top: max(12px, env(safe-area-inset-top)); padding-bottom: max(12px, env(safe-area-inset-bottom)); padding-left: max(12px, env(safe-area-inset-left)); padding-right: max(12px, env(safe-area-inset-right)); }
+        .sig-bar { display: inline-block; width: 4px; margin-right: 2px; border-radius: 1px; background: #374151; vertical-align: bottom; }
         #countdown-overlay { position: fixed; inset: 0; z-index: 35; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; padding-top: 16vh; pointer-events: none; }
         #countdown-num { font-size: clamp(96px, 19vw, 280px); color: #fff; line-height: 1; opacity: 0;
             text-shadow: 0 12px 0 #b91c1c, 8px 8px 0 #000, 0 0 60px rgba(239,68,68,0.7); }
@@ -89,9 +112,22 @@
                         <span id="hud-player-count">1 Connected</span>
                     </span>
                 </div>
-                <div class="flex gap-1 mt-0.5">
+                <div class="flex gap-1 mt-0.5 flex-wrap">
                     <button id="bgm-hud-toggle" class="bg-gray-800 hover:bg-gray-700 text-yellow-400 px-1.5 py-1 rounded border border-yellow-500/50 text-[8px] cursor-pointer">🎵 BGM</button>
                     <button id="voice-hud-toggle" class="bg-gray-800 hover:bg-gray-700 text-cyan-300 px-1.5 py-1 rounded border border-cyan-500/50 text-[8px] cursor-pointer">🎙 VOICE</button>
+                </div>
+                <div class="flex gap-1 flex-wrap">
+                    <button id="players-hud-btn" class="bg-gray-800 hover:bg-gray-700 text-green-300 px-1.5 py-1 rounded border border-green-500/50 text-[8px] cursor-pointer">👥 PLAYERS</button>
+                    <button id="joinqr-hud-btn" class="bg-gray-800 hover:bg-gray-700 text-white px-1.5 py-1 rounded border border-white/40 text-[8px] cursor-pointer">📱 JOIN QR</button>
+                </div>
+                <div id="players-hud-panel" class="hud-panel mt-1 bg-slate-950/95 border border-green-600/60 rounded-lg p-2 w-[280px]">
+                    <div class="text-[8px] text-green-300 mb-1.5 flex justify-between"><span>SQUAD · KICK / HOST</span><button id="host-play-toggle-hud" class="text-yellow-300 underline cursor-pointer">HOST PLAYER: OFF</button></div>
+                    <div id="players-hud-list" class="space-y-1 max-h-64 overflow-y-auto"></div>
+                </div>
+                <div id="joinqr-hud-panel" class="hud-panel mt-1 bg-slate-950/95 border border-white/40 rounded-lg p-2 w-[170px]">
+                    <div class="text-[8px] text-yellow-300 mb-1">SCAN TO JOIN · HOVER TO ZOOM</div>
+                    <div id="qrcode-hud" class="qr-zoom origin-left inline-block p-1.5 bg-white rounded"></div>
+                    <div class="text-[8px] text-gray-400 mt-1">Joins straight into the battle</div>
                 </div>
             </div>
             <div class="bg-slate-900/90 border-2 border-yellow-500 rounded-lg px-6 py-2 text-center arcade-box flex flex-col items-center">
@@ -143,52 +179,72 @@
             <div id="intro-fade"></div>
         </div>
 
-        <div id="host-lobby" class="fixed inset-0 bg-black/70 backdrop-blur-sm flex flex-col items-center justify-center p-6 z-20">
-            <div class="max-w-3xl w-full bg-gray-900/95 border-4 border-yellow-500 rounded-2xl p-6 md:p-8 text-center arcade-box flex flex-col md:flex-row gap-6 items-center">
-                <div class="flex flex-col items-center bg-gray-800/90 p-4 rounded-xl border border-gray-700 w-full md:w-1/2">
-                    <div class="text-xs text-yellow-400 mb-2 font-bold">SCAN WITH PHONE</div>
-                    <div id="qrcode" class="p-2 bg-white rounded-lg shadow-inner flex justify-center items-center"></div>
-                    <div class="text-[11px] text-gray-400 mt-2">ROOM CODE: <span id="lobby-room-code" class="text-cyan-400 font-bold">CONNECTING...</span></div>
-                    <div id="net-mode-badge" class="mt-2 text-[9px] px-2 py-0.5 rounded bg-blue-900/80 text-blue-300 border border-blue-500">INIT NETWORK...</div>
-                </div>
-                <div class="flex flex-col w-full md:w-1/2 text-left space-y-4">
+        <div id="host-lobby" class="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 z-20 overflow-y-auto">
+            <div class="max-w-6xl w-full bg-gray-900/95 border-4 border-yellow-500 rounded-2xl p-5 arcade-box my-auto">
+                <div class="flex flex-wrap items-end justify-between gap-2 mb-4">
                     <div>
                         <h1 class="text-3xl font-extrabold text-yellow-400 arcade-shadow">BATTLE CITY 3D</h1>
-                        <p class="text-[10px] text-cyan-400 mt-2 leading-relaxed">🦅 DEFEND THE EAGLE BASE · CO-OP 1-7 PLAYERS</p>
+                        <p class="text-[10px] text-cyan-400 mt-2">🦅 DEFEND THE EAGLE BASE · CO-OP 1-7 PLAYERS</p>
                     </div>
-                    <div class="bg-gray-800/80 p-3 rounded-xl border border-gray-700">
-                        <div class="text-[10px] text-gray-300 border-b border-gray-700 pb-1 mb-2 flex justify-between">
-                            <span>CONNECTED SQUADS</span>
-                            <span id="lobby-count-badge" class="text-yellow-400">0/7 PLAYERS</span>
-                        </div>
-                        <div id="connected-players-list" class="space-y-1.5 max-h-36 overflow-y-auto pr-1"></div>
-                    </div>
-                    <p class="text-[8px] text-gray-400 leading-relaxed">WASD/ARROWS move · SPACE fire · SHIFT boost · grab glowing power-ups · enemy shots AND yours can hit the eagle!</p>
                     <div id="asset-status" class="text-[8px] text-cyan-300">LOADING BLOCKS...</div>
-                    <button id="start-btn" class="w-full py-3.5 bg-gradient-to-r from-yellow-500 to-red-600 hover:from-yellow-400 hover:to-red-500 text-black font-extrabold text-sm rounded-xl shadow-lg transform hover:scale-105 active:scale-95 transition-all cursor-pointer border-2 border-yellow-300">
-                        START BATTLE
-                    </button>
-                    <div class="flex justify-between items-center text-[9px] text-gray-400 pt-1 gap-2 flex-wrap">
-                        <button id="bgm-lobby-toggle" class="underline text-yellow-400 hover:text-yellow-300 cursor-pointer">🎵 MUSIC: ON</button>
-                        <button id="voice-lobby-toggle" class="underline text-cyan-300 hover:text-cyan-200 cursor-pointer">🎙 VOICE: ON</button>
-                        <button id="toggle-sim-ctrl-btn" class="underline text-cyan-400 hover:text-cyan-300 cursor-pointer">[Test Controller]</button>
+                </div>
+                <div class="grid grid-cols-1 lg:grid-cols-[230px_minmax(0,1fr)_290px] gap-4 items-start">
+                    <div class="flex flex-col items-center bg-gray-800/90 p-4 rounded-xl border border-gray-700">
+                        <div class="text-xs text-yellow-400 mb-2 font-bold">SCAN WITH PHONE</div>
+                        <div id="qrcode" class="qr-zoom p-2 bg-white rounded-lg shadow-inner flex justify-center items-center"></div>
+                        <div class="text-[11px] text-gray-400 mt-3">ROOM: <span id="lobby-room-code" class="text-cyan-400 font-bold">CONNECTING...</span></div>
+                        <div id="net-mode-badge" class="mt-2 text-[9px] px-2 py-0.5 rounded bg-blue-900/80 text-blue-300 border border-blue-500 text-center">INIT NETWORK...</div>
+                        <div class="text-[8px] text-gray-500 mt-2 text-center leading-relaxed">HOVER THE QR TO ZOOM<br>PLAYERS CAN ALSO JOIN MID-BATTLE</div>
+                    </div>
+                    <div class="flex flex-col gap-3 min-w-0">
+                        <div class="relative bg-gradient-to-b from-slate-800 to-slate-950 rounded-xl border border-gray-700 overflow-hidden">
+                            <div class="absolute top-2 left-3 text-[10px] text-yellow-400 z-10">SQUAD FORMATION</div>
+                            <div id="lobby-count-badge" class="absolute top-2 right-3 text-[10px] text-yellow-400 z-10">0/7 PLAYERS</div>
+                            <canvas id="squad-canvas"></canvas>
+                            <div id="squad-empty" class="absolute inset-0 flex items-center justify-center text-[10px] text-gray-400 pointer-events-none">WAITING FOR PILOTS…</div>
+                        </div>
+                        <div id="connected-players-list" class="grid grid-cols-1 sm:grid-cols-2 gap-1.5 max-h-44 overflow-y-auto pr-1"></div>
+                    </div>
+                    <div class="flex flex-col gap-3">
+                        <div class="bg-gray-800/80 p-3 rounded-xl border border-gray-700">
+                            <div class="flex justify-between items-center text-[10px] text-cyan-300 mb-2"><span id="lb-title">🌎 GLOBAL TOP 10</span><button id="lb-refresh" class="text-gray-400 hover:text-white cursor-pointer" title="Refresh">↻</button></div>
+                            <ol id="leaderboard-list" class="text-[9px] space-y-1 min-h-[60px]"></ol>
+                        </div>
+                        <button id="host-play-toggle" class="w-full py-2 bg-gray-800 hover:bg-gray-700 text-[10px] rounded-lg border border-gray-600 text-gray-300 cursor-pointer">🎮 HOST PLAYER (KEYBOARD): OFF</button>
+                        <button id="start-btn" class="w-full py-3.5 bg-gradient-to-r from-yellow-500 to-red-600 hover:from-yellow-400 hover:to-red-500 text-black font-extrabold text-sm rounded-xl shadow-lg transform hover:scale-105 active:scale-95 transition-all cursor-pointer border-2 border-yellow-300">START BATTLE</button>
+                        <div class="flex justify-between items-center text-[9px] text-gray-400 gap-2 flex-wrap">
+                            <button id="bgm-lobby-toggle" class="underline text-yellow-400 hover:text-yellow-300 cursor-pointer">🎵 MUSIC: ON</button>
+                            <button id="voice-lobby-toggle" class="underline text-cyan-300 hover:text-cyan-200 cursor-pointer">🎙 VOICE: ON</button>
+                            <button id="toggle-sim-ctrl-btn" class="underline text-cyan-400 hover:text-cyan-300 cursor-pointer">[Test Controller]</button>
+                        </div>
+                        <p class="text-[8px] text-gray-500 leading-relaxed">Host keyboard: WASD/ARROWS move · SPACE fire · SHIFT boost. Enemy shots AND yours can hit the eagle!</p>
                     </div>
                 </div>
             </div>
         </div>
 
-        <div id="gameover-screen" class="fixed inset-0 bg-black/80 backdrop-blur-md flex flex-col items-center justify-center p-6 z-20 hidden">
-            <div class="max-w-md w-full bg-gray-900 border-4 border-red-600 rounded-2xl p-8 text-center arcade-box">
+        <div id="gameover-screen" class="fixed inset-0 bg-black/80 backdrop-blur-md flex flex-col items-center justify-center p-6 z-20 hidden overflow-y-auto">
+            <div class="max-w-2xl w-full bg-gray-900 border-4 border-red-600 rounded-2xl p-6 md:p-8 text-center arcade-box my-auto">
                 <h2 id="end-title" class="text-3xl font-extrabold text-red-500 arcade-shadow mb-2">GAME OVER</h2>
-                <p id="end-subtitle" class="text-xs text-gray-300 mb-6">THE EAGLE BASE WAS DESTROYED</p>
-                <div class="bg-gray-800 rounded-xl p-4 border border-gray-700 text-xs space-y-2 mb-6">
-                    <div class="flex justify-between text-gray-300"><span>SURVIVAL TIME:</span><span id="end-time" class="text-yellow-400 font-bold">00:00</span></div>
-                    <div class="flex justify-between text-gray-300"><span>TANKS DESTROYED:</span><span id="end-kills" class="text-red-400 font-bold">0</span></div>
-                    <div class="flex justify-between text-gray-300"><span>FINAL SCORE:</span><span id="end-score" class="text-green-400 font-bold">0000</span></div>
+                <p id="end-subtitle" class="text-xs text-gray-300 mb-5">THE EAGLE BASE WAS DESTROYED</p>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-5 text-left">
+                    <div class="bg-gray-800 rounded-xl p-4 border border-gray-700 text-xs space-y-2">
+                        <div class="flex justify-between text-gray-300"><span>SURVIVAL TIME:</span><span id="end-time" class="text-yellow-400 font-bold">00:00</span></div>
+                        <div class="flex justify-between text-gray-300"><span>WAVE:</span><span id="end-wave" class="text-cyan-300 font-bold">1</span></div>
+                        <div class="flex justify-between text-gray-300"><span>TANKS DESTROYED:</span><span id="end-kills" class="text-red-400 font-bold">0</span></div>
+                        <div class="flex justify-between text-gray-300"><span>FINAL SCORE:</span><span id="end-score" class="text-green-400 font-bold">0000</span></div>
+                        <div id="end-rank" class="text-center text-[10px] text-yellow-300 pt-2"></div>
+                        <div id="end-pilots" class="text-[9px] text-gray-400 pt-1 space-y-1"></div>
+                    </div>
+                    <div class="bg-gray-800 rounded-xl p-4 border border-gray-700">
+                        <div id="lb-title-end" class="text-[10px] text-cyan-300 mb-2">🌎 GLOBAL TOP 10</div>
+                        <ol id="leaderboard-end" class="text-[9px] space-y-1"></ol>
+                    </div>
                 </div>
-                <button id="restart-btn" class="w-full py-3 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-400 hover:to-emerald-500 text-black font-extrabold text-sm rounded-xl shadow-lg transform hover:scale-105 active:scale-95 transition-all cursor-pointer border-2 border-green-300">PLAY AGAIN</button>
+                <button id="restart-btn" class="w-full py-3 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-400 hover:to-emerald-500 text-black font-extrabold text-sm rounded-xl shadow-lg transform hover:scale-105 active:scale-95 transition-all cursor-pointer border-2 border-green-300">RETURN TO LOBBY</button>
             </div>
         </div>
+        <div id="toast"></div>
 
         <div id="sim-controller-overlay" class="fixed bottom-4 right-4 z-30 hidden bg-gray-900/90 border-2 border-cyan-500 rounded-2xl p-4 backdrop-blur shadow-2xl flex flex-col items-center gap-2">
             <div class="flex justify-between items-center w-full text-[9px] text-cyan-400 pb-1 border-b border-gray-700">
@@ -202,18 +258,23 @@
         </div>
     </div>
 
-    <div id="controller-view" class="w-full h-full relative hidden bg-gray-950 flex flex-col justify-between p-4 select-none">
-        <div class="w-full bg-gray-900/90 border-2 border-gray-700 rounded-xl p-3 flex justify-between items-center shadow-md">
-            <div class="flex items-center gap-2">
+    <div id="controller-view" class="w-full h-full relative hidden bg-gray-950 flex flex-col justify-between select-none">
+        <div class="w-full bg-gray-900/90 border-2 border-gray-700 rounded-xl p-3 flex justify-between items-center shadow-md gap-2">
+            <div class="flex items-center gap-2 min-w-0">
+                <img id="ctrl-tank-icon" class="w-9 h-7 hidden" alt="">
                 <div id="ctrl-player-badge" class="w-5 h-5 rounded-full bg-yellow-500 border border-white shadow"></div>
-                <div>
-                    <div id="ctrl-player-name" class="text-xs font-bold text-white">PLAYER</div>
+                <div class="min-w-0">
+                    <div id="ctrl-player-name" class="text-xs font-bold text-white truncate">PLAYER</div>
                     <div id="ctrl-status-text" class="text-[9px] text-yellow-400">CONNECTING...</div>
                 </div>
             </div>
-            <button id="ctrl-fullscreen-btn" class="text-[10px] bg-gray-800 border border-gray-600 px-2.5 py-1.5 rounded text-gray-300 active:bg-gray-700">fullscreen</button>
+            <div class="flex items-center gap-2 shrink-0">
+                <div id="ctrl-ping" class="text-[8px] text-gray-400 text-right leading-tight"><span id="ctrl-sig"></span><br><span id="ctrl-ping-ms">--</span></div>
+                <button id="ctrl-sound-btn" class="text-[12px] bg-gray-800 border border-gray-600 w-9 h-9 rounded text-gray-200 active:bg-gray-700">🔊</button>
+                <button id="ctrl-fullscreen-btn" class="text-[10px] bg-gray-800 border border-gray-600 px-2.5 h-9 rounded text-gray-300 active:bg-gray-700">⛶</button>
+            </div>
         </div>
-        <div id="ctrl-powerup-badge" class="w-full bg-yellow-500 text-black text-center py-1.5 rounded-lg text-xs font-bold shadow hidden transition-all">⚡ POWER-UP ACTIVATED!</div>
+        <div id="ctrl-powerup-badge" class="w-full bg-yellow-500 text-black text-center py-1.5 rounded-lg text-xs font-bold shadow hidden transition-all mt-2">⚡ POWER-UP ACTIVATED!</div>
         <div class="flex-1 w-full flex items-center justify-between my-2 relative overflow-hidden">
             <div id="joystick-zone" class="w-1/2 h-full relative flex items-center justify-center">
                 <div class="w-36 h-36 rounded-full border-2 border-dashed border-gray-700 pointer-events-none opacity-40"></div>
@@ -225,13 +286,19 @@
                 </button>
             </div>
         </div>
-        <div class="w-full text-center text-[9px] text-gray-500 py-1">BATTLE CITY 3D REMOTE CONTROLLER • KEEP SCREEN ON</div>
+        <div id="ctrl-footer" class="w-full text-center text-[9px] text-gray-500 py-1">BATTLE CITY 3D REMOTE CONTROLLER • KEEP SCREEN ON</div>
+        <div id="ctrl-conn-overlay" class="fixed inset-0 bg-black/70 backdrop-blur-sm flex-col items-center justify-center p-6 z-20 hidden">
+            <div class="text-yellow-300 text-sm mb-3 animate-pulse">📡 RECONNECTING…</div>
+            <div id="ctrl-conn-detail" class="text-[10px] text-gray-300 text-center leading-relaxed">Your tank is kept for 60 s</div>
+            <button id="ctrl-retry-btn" class="mt-5 px-5 py-3 bg-cyan-600 text-black text-xs font-bold rounded-xl active:scale-95">RETRY NOW</button>
+        </div>
         <div id="ctrl-join-overlay" class="fixed inset-0 bg-black/95 backdrop-blur-md flex flex-col items-center justify-center p-6 z-30">
             <div class="max-w-xs w-full bg-gray-900 border-2 border-cyan-500 rounded-2xl p-6 text-center arcade-box space-y-4">
                 <div class="text-cyan-400 font-bold text-sm">JOIN BATTLE</div>
                 <div class="text-[10px] text-gray-400">ENTER YOUR PILOT NICKNAME:</div>
-                <input id="ctrl-nickname-input" type="text" maxlength="8" value="TANKER" class="w-full bg-gray-800 border border-gray-600 text-center text-yellow-400 text-xs py-2 rounded focus:outline-none focus:border-yellow-400">
+                <input id="ctrl-nickname-input" type="text" maxlength="8" value="TANKER" autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false" class="w-full bg-gray-800 border border-gray-600 text-center text-yellow-400 py-2 rounded focus:outline-none focus:border-yellow-400">
                 <button id="ctrl-connect-btn" class="w-full py-3 bg-gradient-to-r from-cyan-500 to-blue-600 text-black font-extrabold text-xs rounded-xl shadow-lg border border-cyan-300 active:scale-95 transition-all">READY TO CONNECT</button>
+                <div id="ctrl-join-msg" class="text-[9px] text-red-400 min-h-[12px]"></div>
             </div>
         </div>
     </div>
@@ -416,9 +483,34 @@
             { id: 'medkit', name: 'REPAIR KIT', icon: '💖', color: 0x4ade80, css: '#4ade80', msg: 'HEALTH RESTORED!', voice: 'Repaired!' }
         ];
 
+        // =====================================================================
+        //  CONFIG — global leaderboard (Supabase, free plan) + network
+        //  Paste your project URL and anon/publishable key below (Supabase → Project Settings → API).
+        //  Leave them empty and the game keeps a local leaderboard in this browser instead.
+        // =====================================================================
+        const SUPABASE_URL = '';          // e.g. 'https://abcdefgh.supabase.co'
+        const SUPABASE_ANON_KEY = '';     // e.g. 'eyJhbGciOi...' or 'sb_publishable_...'
+        const LEADERBOARD_TABLE = 'battlecity_scores';
+        // Free public STUN servers (no account, no cost). They help phones and host find a direct route.
+        // If one day you get a TURN server, add it here: { urls: 'turn:host:443?transport=tcp', username: '...', credential: '...' }
+        const ICE_SERVERS = [
+            { urls: 'stun:stun.l.google.com:19302' },
+            { urls: 'stun:stun1.l.google.com:19302' },
+            { urls: 'stun:stun2.l.google.com:19302' },
+            { urls: 'stun:stun.cloudflare.com:3478' },
+            { urls: 'stun:global.stun.twilio.com:3478' }
+        ];
+        const PEER_OPTS = { debug: 0, config: { iceServers: ICE_SERVERS, iceCandidatePoolSize: 4 } };
+        const PLAYER_GRACE_MS = 60000;   // a disconnected pilot keeps tank, lives and score this long
+        const safeStore = {
+            get(k, s = localStorage) { try { return s.getItem(k); } catch (e) { return null; } },
+            set(k, v, s = localStorage) { try { s.setItem(k, v); } catch (e) {} }
+        };
+
         const urlParams = new URLSearchParams(window.location.search);
         const targetRoomCode = urlParams.get('room');
         if (targetRoomCode) {
+            document.body.classList.add('is-controller');
             document.getElementById('controller-view').classList.remove('hidden');
             initControllerApp(targetRoomCode.toUpperCase());
         } else {
@@ -427,97 +519,231 @@
         }
 
         function initControllerApp(roomCode) {
-            let peer = null, conn = null, joyManager = null, broadcastChannel = null;
+            // ---------- iOS / Android: block pinch-zoom, double-tap zoom and page scrolling ----------
+            ['gesturestart', 'gesturechange', 'gestureend'].forEach(ev => document.addEventListener(ev, e => e.preventDefault(), { passive: false }));
+            document.addEventListener('touchmove', e => { if (e.target.tagName !== 'INPUT') e.preventDefault(); }, { passive: false });
+            document.addEventListener('dblclick', e => e.preventDefault(), { passive: false });
+            let lastTouchEnd = 0;
+            document.addEventListener('touchend', e => { const n = Date.now(); if (n - lastTouchEnd < 320 && e.target.tagName !== 'INPUT') e.preventDefault(); lastTouchEnd = n; }, { passive: false });
+            document.addEventListener('contextmenu', e => e.preventDefault());
+
+            // Stable pilot id per browser tab: survives reloads / app switching, so the host can give the same tank back
+            let cid = safeStore.get('bc3d_cid', sessionStorage);
+            if (!cid) { cid = 'p_' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4); safeStore.set('bc3d_cid', cid, sessionStorage); }
+            const nameInput = document.getElementById('ctrl-nickname-input');
+            const savedName = safeStore.get('bc3d_name'); if (savedName) nameInput.value = savedName;
+
+            let peer = null, conn = null, bus = null, transport = 'none', joyManager = null;
+            let nickname = 'TANKER', kicked = false, joined = false, retry = 0, retryTimer = null, connectTimer = null;
+            let lastHostMsg = 0, pingMs = null, lastKey = '', lastSend = 0, loopsStarted = false, soundOn = true, everConnected = false;
             const inputState = { dirX: 0, dirZ: 0, shoot: false, boost: false };
             const statusText = document.getElementById('ctrl-status-text');
             const playerBadge = document.getElementById('ctrl-player-badge');
             const playerName = document.getElementById('ctrl-player-name');
             const overlay = document.getElementById('ctrl-join-overlay');
+            const connOverlay = document.getElementById('ctrl-conn-overlay');
             const pwrBadge = document.getElementById('ctrl-powerup-badge');
             let badgeTimer = null;
             function flashBadge(text, ms = 3000) {
-                pwrBadge.innerText = text;
-                pwrBadge.classList.remove('hidden');
-                clearTimeout(badgeTimer);
-                badgeTimer = setTimeout(() => pwrBadge.classList.add('hidden'), ms);
+                pwrBadge.innerText = text; pwrBadge.classList.remove('hidden');
+                clearTimeout(badgeTimer); badgeTimer = setTimeout(() => pwrBadge.classList.add('hidden'), ms);
             }
+            function setStatus(text, color) {
+                statusText.innerText = text;
+                statusText.className = `text-[9px] font-bold ${({ green: 'text-green-400', yellow: 'text-yellow-400', orange: 'text-orange-400', red: 'text-red-500' })[color] || 'text-yellow-400'}`;
+            }
+            function showConnOverlay(on, detail) {
+                connOverlay.classList.toggle('hidden', !on); connOverlay.classList.toggle('flex', on);
+                if (detail) document.getElementById('ctrl-conn-detail').innerText = detail;
+            }
+            function renderPing() {
+                const bars = pingMs == null ? 0 : pingMs < 80 ? 4 : pingMs < 160 ? 3 : pingMs < 300 ? 2 : 1;
+                const col = bars >= 3 ? '#4ade80' : bars === 2 ? '#facc15' : '#f87171';
+                document.getElementById('ctrl-sig').innerHTML = [6, 9, 12, 15].map((h, i) => `<span class="sig-bar" style="height:${h}px;${i < bars ? 'background:' + col : ''}"></span>`).join('');
+                document.getElementById('ctrl-ping-ms').innerText = transport === 'local' ? 'LOCAL' : pingMs == null ? '--' : `${Math.round(pingMs)} ms`;
+            }
+
+            // ---------- Sound on the phone ----------
+            const soundBtn = document.getElementById('ctrl-sound-btn');
+            soundBtn.addEventListener('click', () => { audio.init(); soundOn = !soundOn; if (audio.master) audio.master.gain.value = soundOn ? 0.9 : 0; soundBtn.innerText = soundOn ? '🔊' : '🔇'; });
+            function sfx(name) {
+                if (!soundOn || !audio.ctx) return;
+                const map = {
+                    hit: () => audio.playHit(), die: () => { audio.playExplosion(true); audio.playPlayerDown(); }, kill: () => audio.playExplosion(false),
+                    power: () => audio.playPowerup(), respawn: () => audio.playShieldUp(), wave: () => audio.playWaveStart(), boss: () => audio.playBossSiren(),
+                    base: () => audio.playBaseHit(), over: () => audio.playGameOver(), go: () => audio.playCountdown(true), tick: () => audio.playCountdown(false),
+                    join: () => audio.playPowerupSpawn(), intro: () => audio.playImpact()
+                };
+                if (map[name]) map[name]();
+            }
+            let lastLocalShot = 0;
+            setInterval(() => { if (inputState.shoot && soundOn && audio.ctx && performance.now() - lastLocalShot > 210) { lastLocalShot = performance.now(); audio.tone(520, 0.08, { slideTo: 90, vol: 0.07 }); } }, 50);
 
             document.getElementById('ctrl-connect-btn').addEventListener('click', async () => {
-                audio.init();
-                if ('wakeLock' in navigator) { try { await navigator.wakeLock.request('screen'); } catch(e){} }
+                audio.init(); audio.playPowerupSpawn();
+                nickname = (nameInput.value.trim() || 'TANKER').toUpperCase().slice(0, 8);
+                safeStore.set('bc3d_name', nickname);
+                if ('wakeLock' in navigator) { try { await navigator.wakeLock.request('screen'); } catch (e) {} }
+                nameInput.blur();
                 overlay.classList.add('hidden');
-                connectToHost();
+                playerName.innerText = nickname;
+                joined = true; kicked = false; connect();
             });
-            document.getElementById('ctrl-fullscreen-btn').addEventListener('click', () => {
-                if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(()=>{});
-                else document.exitFullscreen().catch(()=>{});
+            const fsBtn = document.getElementById('ctrl-fullscreen-btn');
+            if (!document.documentElement.requestFullscreen) fsBtn.classList.add('hidden');
+            fsBtn.addEventListener('click', () => {
+                if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(() => {});
+                else document.exitFullscreen().catch(() => {});
             });
+            document.getElementById('ctrl-retry-btn').addEventListener('click', () => { retry = 0; clearTimeout(retryTimer); retryTimer = null; connect(true); });
+            document.addEventListener('visibilitychange', () => {
+                if (document.visibilityState === 'visible' && joined && !kicked) {
+                    if ('wakeLock' in navigator) navigator.wakeLock.request('screen').catch(() => {});
+                    if (!isOpen()) { retry = 0; clearTimeout(retryTimer); retryTimer = null; connect(true); }
+                }
+            });
+            window.addEventListener('online', () => { if (joined && !kicked && !isOpen()) { retry = 0; clearTimeout(retryTimer); retryTimer = null; connect(true); } });
 
-            function connectToHost() {
-                const nickname = document.getElementById('ctrl-nickname-input').value.trim() || "TANKER";
-                statusText.innerText = "CONNECTING...";
+            function isOpen() { return (transport === 'webrtc' && conn && conn.open) || transport === 'local'; }
+            function send(msg) {
                 try {
-                    peer = new Peer();
-                    peer.on('open', () => {
-                        conn = peer.connect(`bc3d-${roomCode}`, { metadata: { name: nickname } });
-                        conn.on('open', () => { statusText.innerText = "CONNECTED (WEBRTC)"; statusText.className = "text-[9px] text-green-400 font-bold"; setupJoystick(); });
-                        conn.on('data', (data) => handleHostMessage(data, nickname));
-                        conn.on('close', () => { statusText.innerText = "DISCONNECTED"; statusText.className = "text-[9px] text-red-500 font-bold"; });
+                    if (transport === 'webrtc' && conn && conn.open) {
+                        const dc = conn.dataChannel;
+                        if (msg.type === 'input' && dc && dc.bufferedAmount > 24000) return; // slow link: drop stale input instead of queueing lag
+                        conn.send(msg);
+                    } else if (transport === 'local' && bus) bus.postMessage({ _target: 'host', senderId: cid, ...msg });
+                } catch (e) {}
+            }
+            function connect(force) {
+                if (kicked || !joined) return;
+                clearTimeout(connectTimer);
+                setupLocalBus(); // same-device fallback (host + controller in one browser) — harmless elsewhere
+                setStatus(retry ? `RECONNECTING (${retry})...` : 'CONNECTING...', retry ? 'orange' : 'yellow');
+                if (everConnected) showConnOverlay(true, retry > 2 ? 'Slow or blocked network. Still trying…\nTip: switch Wi-Fi ⇄ mobile data' : 'Your tank is kept for 60 s');
+                if (force && peer) { try { peer.destroy(); } catch (e) {} peer = null; }
+                if (!peer || peer.destroyed) {
+                    try { peer = new Peer(undefined, PEER_OPTS); } catch (e) { setupLocalBus(); return; }
+                    const p = peer;
+                    p.on('open', () => { if (p === peer) openConn(); });
+                    p.on('disconnected', () => { if (p === peer && !p.destroyed) setTimeout(() => { try { if (!p.destroyed && p.disconnected) p.reconnect(); } catch (e) {} }, 1000); });
+                    p.on('error', (e) => {
+                        if (p !== peer) return;
+                        if (e.type === 'peer-unavailable') scheduleRetry('HOST NOT FOUND');
+                        else if (['network', 'server-error', 'socket-error', 'socket-closed', 'webrtc'].includes(e.type)) scheduleRetry('NETWORK');
+                        else if (e.type === 'browser-incompatible') { setupLocalBus(); }
                     });
-                    peer.on('error', () => setupBroadcastFallback(nickname));
-                } catch (err) { setupBroadcastFallback(nickname); }
-                setTimeout(() => { if (!conn || !conn.open) setupBroadcastFallback(nickname); }, 2800);
+                } else if (peer.open) openConn();
+                else if (peer.disconnected) { try { peer.reconnect(); } catch (e) {} }
+                connectTimer = setTimeout(() => { if (!isOpen()) { setupLocalBus(); if (!isOpen()) scheduleRetry('TIMEOUT'); } }, 9000);
             }
-            function setupBroadcastFallback(nickname) {
-                if (broadcastChannel) return;
+            function openConn() {
+                if (conn) { try { conn.close(); } catch (e) {} }
+                const c = peer.connect(`bc3d-${roomCode}`, { reliable: true, serialization: 'json', metadata: { name: nickname, cid } });
+                conn = c;
+                c.on('open', () => {
+                    if (conn !== c) return;
+                    transport = 'webrtc'; retry = 0; everConnected = true; lastHostMsg = performance.now();
+                    clearTimeout(connectTimer);
+                    send({ type: 'hello', cid, name: nickname });
+                    setStatus('CONNECTED', 'green'); showConnOverlay(false);
+                    setupJoystick(); startLoops(); renderPing();
+                });
+                c.on('data', (data) => { if (conn === c) handleHostMessage(data); });
+                c.on('close', () => { if (conn === c) { conn = null; if (transport === 'webrtc') transport = 'none'; onLost('CONNECTION LOST'); } });
+                c.on('error', () => { if (conn === c) onLost('LINK ERROR'); });
+            }
+            function setupLocalBus() {
+                if (bus || typeof BroadcastChannel === 'undefined') return;
                 try {
-                    const clientId = 'client_' + Math.random().toString(36).substring(2, 7);
-                    broadcastChannel = new BroadcastChannel(`bc3d-${roomCode}`);
-                    statusText.innerText = "CONNECTED (LOCAL BUS)";
-                    statusText.className = "text-[9px] text-yellow-400 font-bold";
-                    broadcastChannel.onmessage = (evt) => { if (evt.data && evt.data._target === clientId) handleHostMessage(evt.data, nickname); };
-                    broadcastChannel.postMessage({ _target: 'host', type: 'client_join', senderId: clientId, name: nickname });
-                    conn = { open: true, send: (data) => broadcastChannel.postMessage({ _target: 'host', senderId: clientId, ...data }) };
-                    setupJoystick();
-                } catch (e) { statusText.innerText = "CONNECTION FAILED"; }
+                    bus = new BroadcastChannel(`bc3d-${roomCode}`);
+                    bus.onmessage = (evt) => {
+                        if (!evt.data || evt.data._target !== cid) return;
+                        if (transport !== 'webrtc') { transport = 'local'; everConnected = true; setStatus('CONNECTED (LOCAL BUS)', 'yellow'); showConnOverlay(false); setupJoystick(); startLoops(); }
+                        handleHostMessage(evt.data);
+                    };
+                    bus.postMessage({ _target: 'host', type: 'hello', senderId: cid, cid, name: nickname });
+                } catch (e) {}
             }
-            function handleHostMessage(data, nickname) {
+            function onLost(reason) { if (kicked) return; pingMs = null; renderPing(); scheduleRetry(reason); }
+            function scheduleRetry(reason) {
+                if (kicked || retryTimer || isOpen()) return;
+                retry++;
+                const wait = Math.min(8000, 700 * Math.pow(1.6, retry - 1));
+                setStatus(`${reason} · RETRY IN ${Math.ceil(wait / 1000)}s`, 'orange');
+                if (everConnected) showConnOverlay(true, retry > 3 ? 'Slow or blocked network. Still trying…\nTip: switch Wi-Fi ⇄ mobile data' : 'Your tank is kept for 60 s');
+                retryTimer = setTimeout(() => { retryTimer = null; connect(retry % 4 === 0); }, wait);
+            }
+            function handleHostMessage(data) {
+                lastHostMsg = performance.now();
+                if (data.type === 'pong') { pingMs = pingMs == null ? performance.now() - data.t : pingMs * 0.6 + (performance.now() - data.t) * 0.4; renderPing(); return; }
                 if (data.type === 'init_slot') {
                     const palette = PLAYER_PALETTE[data.slotIndex % PLAYER_PALETTE.length];
                     playerBadge.className = `w-5 h-5 rounded-full ${palette.tailwind} border border-white shadow`;
-                    playerName.innerText = `${nickname} (${palette.name})`;
+                    playerName.innerText = `${data.name || nickname} · ${palette.name}`;
+                    document.documentElement.style.setProperty('--pc', palette.css);
+                    document.getElementById('ctrl-footer').innerText = data.rejoined ? '✔ RECONNECTED · YOUR TANK WAS KEPT' : 'BATTLE CITY 3D REMOTE CONTROLLER • KEEP SCREEN ON';
+                    if (data.rejoined) flashBadge('✔ RECONNECTED!', 1800);
+                    sfx('join');
                 } else if (data.type === 'powerup_acquired') {
                     if (navigator.vibrate) navigator.vibrate([40, 30, 40]);
-                    flashBadge(`${data.icon} ${data.msg}`);
+                    flashBadge(`${data.icon} ${data.msg}`); sfx('power');
                 } else if (data.type === 'hit_vibrate') {
-                    if (navigator.vibrate) navigator.vibrate(100);
+                    if (navigator.vibrate) navigator.vibrate(100); sfx('hit');
+                } else if (data.type === 'sfx') {
+                    sfx(data.s);
+                    if (data.s === 'die') { if (navigator.vibrate) navigator.vibrate([200, 80, 200]); flashBadge(data.text || '💥 TANK DESTROYED', 1800); }
+                    if (data.s === 'wave' || data.s === 'boss') flashBadge(data.text || '', 2000);
                 } else if (data.type === 'countdown') {
                     flashBadge(data.text === 'GO!' ? '🚀 GO! GO! GO!' : `⏱ ${data.text}`, 900);
                     if (navigator.vibrate) navigator.vibrate(data.text === 'GO!' ? [80, 40, 160] : 40);
+                    sfx(data.text === 'GO!' ? 'go' : 'tick');
                 } else if (data.type === 'intro') {
-                    flashBadge('🦅 DEFEND YOUR BASE!', 4500);
+                    flashBadge('🦅 DEFEND YOUR BASE!', 4500); sfx('intro');
                     if (navigator.vibrate) navigator.vibrate([60, 60, 60]);
+                } else if (data.type === 'kicked' || data.type === 'full') {
+                    kicked = true; joined = false; clearTimeout(retryTimer); clearTimeout(connectTimer);
+                    try { if (conn) conn.close(); if (peer) peer.destroy(); } catch (e) {}
+                    conn = null; peer = null; transport = 'none'; showConnOverlay(false);
+                    overlay.classList.remove('hidden');
+                    document.getElementById('ctrl-join-msg').innerText = data.type === 'full' ? 'ROOM IS FULL (7/7)' : 'YOU WERE REMOVED BY THE HOST';
+                    setStatus(data.type === 'full' ? 'ROOM FULL' : 'REMOVED', 'red');
                 }
             }
-            function sendInputState() {
-                if (conn && conn.open) conn.send({ type: 'input', dirX: inputState.dirX, dirZ: inputState.dirZ, shoot: inputState.shoot, boost: inputState.boost });
+            function sendInputIfNeeded(force) {
+                const key = `${inputState.dirX}|${inputState.dirZ}|${inputState.shoot ? 1 : 0}|${inputState.boost ? 1 : 0}`;
+                const now = performance.now();
+                if (force || key !== lastKey || now - lastSend > 250) {
+                    if (!force && now - lastSend < 33 && key !== lastKey && lastKey.split('|')[2] === key.split('|')[2]) return; // cap ~30/s for stick moves
+                    lastKey = key; lastSend = now;
+                    send({ type: 'input', dirX: inputState.dirX, dirZ: inputState.dirZ, shoot: inputState.shoot, boost: inputState.boost });
+                }
+            }
+            function startLoops() {
+                if (loopsStarted) return; loopsStarted = true;
+                setInterval(() => { if (isOpen()) sendInputIfNeeded(false); }, 40);
+                setInterval(() => {
+                    if (!isOpen()) return;
+                    send({ type: 'ping', t: performance.now(), ms: pingMs == null ? null : Math.round(pingMs) });
+                    if (transport === 'local' && bus && performance.now() - lastHostMsg > 6000) bus.postMessage({ _target: 'host', type: 'hello', senderId: cid, cid, name: nickname });
+                    if (transport === 'webrtc' && performance.now() - lastHostMsg > 9000) { try { conn && conn.close(); } catch (e) {} conn = null; transport = 'none'; onLost('HOST SILENT'); }
+                }, 2000);
             }
             function setupJoystick() {
                 if (joyManager) return;
-                joyManager = nipplejs.create({ zone: document.getElementById('joystick-zone'), mode: 'static', position: { left: '50%', top: '50%' }, color: '#06b6d4', size: 110 });
+                joyManager = nipplejs.create({ zone: document.getElementById('joystick-zone'), mode: 'static', position: { left: '50%', top: '50%' }, color: '#06b6d4', size: 120 });
                 joyManager.on('move', (evt, data) => {
                     if (data && data.vector) {
                         inputState.dirX = Math.round(data.vector.x * 100) / 100;
                         inputState.dirZ = Math.round(-data.vector.y * 100) / 100;
-                        sendInputState();
+                        sendInputIfNeeded(false);
                     }
                 });
-                joyManager.on('end', () => { inputState.dirX = 0; inputState.dirZ = 0; sendInputState(); });
+                joyManager.on('end', () => { inputState.dirX = 0; inputState.dirZ = 0; sendInputIfNeeded(true); });
                 const bindHold = (el, key) => {
-                    const on = (e) => { e.preventDefault(); if (key === 'shoot') el.classList.add('fire-btn-active'); inputState[key] = true; sendInputState(); };
-                    const off = (e) => { e.preventDefault(); if (key === 'shoot') el.classList.remove('fire-btn-active'); inputState[key] = false; sendInputState(); };
-                    el.addEventListener('touchstart', on, { passive: false }); el.addEventListener('touchend', off, { passive: false });
-                    el.addEventListener('mousedown', on); el.addEventListener('mouseup', off);
+                    const on = (e) => { e.preventDefault(); el.classList.add('fire-btn-active'); inputState[key] = true; sendInputIfNeeded(true); if (key === 'shoot' && navigator.vibrate) navigator.vibrate(15); };
+                    const off = (e) => { e.preventDefault(); el.classList.remove('fire-btn-active'); inputState[key] = false; sendInputIfNeeded(true); };
+                    el.addEventListener('touchstart', on, { passive: false }); el.addEventListener('touchend', off, { passive: false }); el.addEventListener('touchcancel', off, { passive: false });
+                    el.addEventListener('mousedown', on); el.addEventListener('mouseup', off); el.addEventListener('mouseleave', off);
                 };
                 bindHold(document.getElementById('fire-btn'), 'shoot');
                 bindHold(document.getElementById('boost-btn'), 'boost');
@@ -525,91 +751,232 @@
         }
 
         function initHostApp() {
-            const roomCode = Math.random().toString(36).substring(2, 6).toUpperCase();
+            // Room code survives a host page reload (same tab), so phones reconnect to the same room
+            let roomCode = safeStore.get('bc3d_room', sessionStorage);
+            if (!roomCode || !/^[A-Z0-9]{4}$/.test(roomCode)) { roomCode = Math.random().toString(36).substring(2, 6).toUpperCase().replace(/[^A-Z0-9]/g, 'X').padEnd(4, 'Z'); safeStore.set('bc3d_room', roomCode, sessionStorage); }
             document.getElementById('hud-room-code').innerText = roomCode;
             document.getElementById('lobby-room-code').innerText = roomCode;
             const joinUrl = `${window.location.origin}${window.location.pathname}?room=${roomCode}`;
-            new QRCode(document.getElementById("qrcode"), { text: joinUrl, width: 140, height: 140, colorDark: "#0f172a", colorLight: "#ffffff", correctLevel: QRCode.CorrectLevel.H });
+            new QRCode(document.getElementById("qrcode"), { text: joinUrl, width: 150, height: 150, colorDark: "#0f172a", colorLight: "#ffffff", correctLevel: QRCode.CorrectLevel.M });
+            new QRCode(document.getElementById("qrcode-hud"), { text: joinUrl, width: 128, height: 128, colorDark: "#0f172a", colorLight: "#ffffff", correctLevel: QRCode.CorrectLevel.M });
+            ['qrcode', 'qrcode-hud'].forEach(id => { const el = document.getElementById(id); el.addEventListener('click', () => el.classList.toggle('zoomed')); el.title = joinUrl; });
 
+            // ---------------- Players / lobby management ----------------
             const activePlayers = new Map();
             const hostPlayerId = 'HOST_LOCAL';
-            activePlayers.set(hostPlayerId, { id: hostPlayerId, slotIndex: 0, name: "HOST (P1)", input: { dirX: 0, dirZ: 0, shoot: false, boost: false }, tank: null, hp: 100, lives: 3, kills: 0, starTimer: 0, laserTimer: 0, shieldTimer: 0, combo: 0, comboTimer: 0 });
-
-            let peer = null, broadcastChannel = null;
-            const netModeBadge = document.getElementById('net-mode-badge');
-            try {
-                peer = new Peer(`bc3d-${roomCode}`);
-                peer.on('open', () => { netModeBadge.innerText = "P2P ONLINE (WEBRTC)"; netModeBadge.className = "mt-2 text-[9px] px-2 py-0.5 rounded bg-green-900/80 text-green-300 border border-green-500"; updateLobbyUI(); });
-                peer.on('connection', (conn) => handleIncomingConnection(conn.peer, conn.metadata ? conn.metadata.name : null, conn));
-                peer.on('error', () => setupHostBroadcastFallback());
-            } catch (e) { setupHostBroadcastFallback(); }
-
-            function setupHostBroadcastFallback() {
-                if (broadcastChannel) return;
-                netModeBadge.innerText = "LOCAL BUS (SANDBOX)";
-                netModeBadge.className = "mt-2 text-[9px] px-2 py-0.5 rounded bg-yellow-900/80 text-yellow-300 border border-yellow-500";
-                try {
-                    broadcastChannel = new BroadcastChannel(`bc3d-${roomCode}`);
-                    broadcastChannel.onmessage = (evt) => {
-                        const data = evt.data; if (!data || data._target !== 'host') return;
-                        if (data.type === 'client_join') {
-                            const virtualConn = { send: (msg) => broadcastChannel.postMessage({ _target: data.senderId, ...msg }) };
-                            handleIncomingConnection(data.senderId, data.name, virtualConn);
-                        } else if (data.type === 'input') {
-                            const player = activePlayers.get(data.senderId);
-                            if (player) { player.input.dirX = data.dirX; player.input.dirZ = data.dirZ; player.input.shoot = data.shoot; player.input.boost = !!data.boost; }
-                        }
-                    };
-                } catch (e) {}
+            const banned = new Map();
+            const connToPlayer = new Map();
+            let hostPlays = false;
+            function makePlayer(id, name, conn, slotIndex) {
+                return { id, conn, slotIndex, name, input: { dirX: 0, dirZ: 0, shoot: false, boost: false }, tank: null, hp: 100, lives: 3, kills: 0, score: 0,
+                    starTimer: 0, laserTimer: 0, shieldTimer: 0, combo: 0, comboTimer: 0, connected: true, lastSeen: performance.now(), disconnectedAt: 0, ping: null, isHost: id === hostPlayerId };
             }
-            function handleIncomingConnection(peerId, name, conn) {
-                if (activePlayers.size >= 7) return;
-                const slotIndex = findNextAvailableSlot();
-                const playerObj = { id: peerId, conn, slotIndex, name: name || `PILOT ${slotIndex + 1}`, input: { dirX: 0, dirZ: 0, shoot: false, boost: false }, tank: null, hp: 100, lives: 3, kills: 0, starTimer: 0, laserTimer: 0, shieldTimer: 0, combo: 0, comboTimer: 0 };
-                activePlayers.set(peerId, playerObj);
-                if (conn && conn.send) conn.send({ type: 'init_slot', slotIndex });
-                if (conn.on) {
-                    conn.on('data', (data) => { if (data.type === 'input') { playerObj.input.dirX = data.dirX; playerObj.input.dirZ = data.dirZ; playerObj.input.shoot = data.shoot; playerObj.input.boost = !!data.boost; } });
-                    conn.on('close', () => { if (playerObj.tank) playerObj.tank.dispose(); activePlayers.delete(peerId); updateLobbyUI(); });
-                }
+            const inMatch = () => gameState === 'PLAYING' || gameState === 'COUNTDOWN' || gameState === 'INTRO';
+            function sendTo(p, msg) { if (p && p.conn && p.conn.send && p.connected) { try { p.conn.send(msg); } catch (e) {} } }
+            function broadcastToControllers(msg) { activePlayers.forEach((p) => sendTo(p, msg)); }
+            function cleanName(n) { return String(n || '').toUpperCase().replace(/[^A-Z0-9 _\-ÑÁÉÍÓÚÜ]/g, '').trim().slice(0, 8) || 'PILOT'; }
+            function toast(text, color = '#facc15') {
+                const el = document.getElementById('toast'); el.innerText = text; el.style.borderColor = color;
+                el.classList.add('show'); clearTimeout(toast._t); toast._t = setTimeout(() => el.classList.remove('show'), 2600);
+            }
+            function setHostPlays(on) {
+                if (on && !activePlayers.has(hostPlayerId)) {
+                    if (activePlayers.size >= 7) { toast('ROOM IS FULL (7/7)', '#f87171'); on = false; }
+                    else {
+                        const p = makePlayer(hostPlayerId, 'HOST', null, findNextAvailableSlot());
+                        activePlayers.set(hostPlayerId, p);
+                        if (inMatch() && gameState !== 'INTRO') spawnPlayerTank(p);
+                    }
+                } else if (!on && activePlayers.has(hostPlayerId)) removePlayer(hostPlayerId);
+                hostPlays = on;
+                const label = on ? 'ON' : 'OFF';
+                document.getElementById('host-play-toggle').innerText = `🎮 HOST PLAYER (KEYBOARD): ${label}`;
+                document.getElementById('host-play-toggle').classList.toggle('border-yellow-400', on);
+                document.getElementById('host-play-toggle-hud').innerText = `HOST PLAYER: ${label}`;
                 updateLobbyUI();
-                if (gameState === 'PLAYING' || gameState === 'COUNTDOWN') spawnPlayerTank(playerObj);
             }
+            document.getElementById('host-play-toggle').addEventListener('click', () => setHostPlays(!hostPlays));
+            document.getElementById('host-play-toggle-hud').addEventListener('click', () => setHostPlays(!hostPlays));
+
+            function removePlayer(id) {
+                const p = activePlayers.get(id); if (!p) return;
+                if (p.tank) { p.tank.dispose(); p.tank = null; }
+                activePlayers.delete(id);
+                if (p.conn) connToPlayer.delete(p.conn);
+                updateLobbyUI();
+                if (gameState === 'PLAYING' && activePlayers.size > 0 && ![...activePlayers.values()].some(q => q.lives > 0)) triggerGameOver(false, 'ALL PILOTS DOWN');
+            }
+            function kickPlayer(id) {
+                if (id === hostPlayerId) { setHostPlays(false); return; }
+                const p = activePlayers.get(id); if (!p) return;
+                sendTo(p, { type: 'kicked' });
+                banned.set(id, performance.now() + 120000);
+                const c = p.conn; setTimeout(() => { try { c && c.close && c.close(); } catch (e) {} }, 400);
+                toast(`${p.name} WAS REMOVED`, '#f87171');
+                removePlayer(id);
+            }
+            function onHello(conn, cid, name) {
+                const now = performance.now();
+                if (banned.get(cid) > now) { try { conn.send({ type: 'kicked' }); } catch (e) {} setTimeout(() => { try { conn.close && conn.close(); } catch (e) {} }, 400); return; }
+                let p = activePlayers.get(cid);
+                if (p) {
+                    if (p.conn && p.conn !== conn) { const old = p.conn; connToPlayer.delete(old); try { old.close && old.close(); } catch (e) {} }
+                    const wasOffline = !p.connected;
+                    p.conn = conn; p.connected = true; p.lastSeen = now; p.disconnectedAt = 0;
+                    connToPlayer.set(conn, cid);
+                    sendTo(p, { type: 'init_slot', slotIndex: p.slotIndex, name: p.name, rejoined: wasOffline });
+                    if (wasOffline) toast(`📡 ${p.name} RECONNECTED`, '#4ade80');
+                    if (inMatch() && gameState !== 'INTRO' && !p.tank) spawnPlayerTank(p);
+                    updateLobbyUI(); return;
+                }
+                if (activePlayers.size >= 7) { try { conn.send({ type: 'full' }); } catch (e) {} setTimeout(() => { try { conn.close && conn.close(); } catch (e) {} }, 400); return; }
+                p = makePlayer(cid, cleanName(name), conn, findNextAvailableSlot());
+                activePlayers.set(cid, p); connToPlayer.set(conn, cid);
+                sendTo(p, { type: 'init_slot', slotIndex: p.slotIndex, name: p.name });
+                toast(`🎖 ${p.name} JOINED THE SQUAD`, PLAYER_PALETTE[p.slotIndex % 7].css);
+                if (gameState === 'PLAYING' || gameState === 'COUNTDOWN') { spawnPlayerTank(p); audio.say(`${p.name} joined`, { key: 'join', cooldown: 2 }); }
+                audio.playPowerupSpawn();
+                updateLobbyUI();
+            }
+            function onPlayerMessage(conn, data) {
+                if (!data || !data.type) return;
+                if (data.type === 'hello') { onHello(conn, data.cid || (conn && conn.peer) || data.senderId, data.name || (conn && conn.metadata && conn.metadata.name)); return; }
+                const id = connToPlayer.get(conn); const p = id && activePlayers.get(id);
+                if (!p) return;
+                p.lastSeen = performance.now();
+                if (!p.connected || p.conn !== conn) { p.conn = conn; p.connected = true; p.disconnectedAt = 0; updateLobbyUI(); }
+                if (data.type === 'input') {
+                    p.input.dirX = Math.max(-1, Math.min(1, +data.dirX || 0)); p.input.dirZ = Math.max(-1, Math.min(1, +data.dirZ || 0));
+                    p.input.shoot = !!data.shoot; p.input.boost = !!data.boost;
+                } else if (data.type === 'ping') { sendTo(p, { type: 'pong', t: data.t }); if (data.ms != null) p.ping = Math.round(data.ms); }
+            }
+            function markDisconnected(p) {
+                if (!p.connected) return;
+                p.connected = false; p.disconnectedAt = performance.now();
+                p.input.dirX = 0; p.input.dirZ = 0; p.input.shoot = false; p.input.boost = false;
+                updateLobbyUI();
+                if (gameState === 'PLAYING') toast(`⚠ ${p.name} LOST CONNECTION · WAITING 60s`, '#fb923c');
+            }
+            function wireConn(conn) {
+                conn.on('data', (d) => onPlayerMessage(conn, d));
+                conn.on('close', () => { const id = connToPlayer.get(conn); const p = id && activePlayers.get(id); if (p && p.conn === conn) markDisconnected(p); });
+                conn.on('error', () => { const id = connToPlayer.get(conn); const p = id && activePlayers.get(id); if (p && p.conn === conn) markDisconnected(p); });
+            }
+            // Watchdog: silent links count as disconnected; disconnected pilots are removed after the grace period
+            setInterval(() => {
+                const now = performance.now();
+                activePlayers.forEach((p) => {
+                    if (p.isHost) return;
+                    if (p.connected && now - p.lastSeen > 9000) { try { p.conn && p.conn.close && p.conn.close(); } catch (e) {} markDisconnected(p); }
+                    if (!p.connected && p.disconnectedAt && now - p.disconnectedAt > PLAYER_GRACE_MS) { toast(`${p.name} LEFT THE BATTLE`, '#94a3b8'); removePlayer(p.id); }
+                });
+                banned.forEach((t, id) => { if (t < now) banned.delete(id); });
+                updateLobbyUI();
+            }, 1000);
+
+            // ---------------- Signalling (PeerJS) with automatic recovery ----------------
+            let peer = null, hostRetry = 0, hostRetryTimer = null;
+            const netModeBadge = document.getElementById('net-mode-badge');
+            function setNet(text, color) {
+                const cls = { green: 'bg-green-900/80 text-green-300 border-green-500', yellow: 'bg-yellow-900/80 text-yellow-300 border-yellow-500', orange: 'bg-orange-900/80 text-orange-300 border-orange-500', red: 'bg-red-900/80 text-red-300 border-red-500' }[color];
+                netModeBadge.innerText = text; netModeBadge.className = `mt-2 text-[9px] px-2 py-0.5 rounded border text-center ${cls}`;
+                const dot = document.getElementById('network-status-dot');
+                dot.className = `w-2 h-2 rounded-full animate-pulse ${color === 'green' ? 'bg-green-500' : color === 'red' ? 'bg-red-500' : 'bg-yellow-400'}`;
+            }
+            function startHostPeer() {
+                clearTimeout(hostRetryTimer);
+                try { peer = new Peer(`bc3d-${roomCode}`, PEER_OPTS); } catch (e) { setNet('LOCAL BUS ONLY', 'yellow'); return; }
+                const p = peer;
+                p.on('open', () => { if (p !== peer) return; hostRetry = 0; setNet('P2P ONLINE (WEBRTC)', 'green'); });
+                p.on('connection', (conn) => wireConn(conn));
+                p.on('disconnected', () => {
+                    if (p !== peer || p.destroyed) return;
+                    setNet('SIGNAL LOST · RECONNECTING', 'orange');
+                    setTimeout(() => { try { if (!p.destroyed && p.disconnected) p.reconnect(); } catch (e) {} }, 1200);
+                });
+                p.on('error', (e) => {
+                    if (p !== peer) return;
+                    if (e.type === 'unavailable-id') { setNet('ROOM BUSY · RETRYING', 'orange'); scheduleHostRetry(true); }
+                    else if (['network', 'server-error', 'socket-error', 'socket-closed'].includes(e.type)) { setNet('NETWORK ERROR · RETRYING', 'orange'); scheduleHostRetry(false); }
+                    else if (e.type === 'browser-incompatible') setNet('WEBRTC NOT SUPPORTED', 'red');
+                });
+            }
+            function scheduleHostRetry(recreate) {
+                if (hostRetryTimer) return;
+                hostRetry++;
+                const wait = Math.min(15000, 1500 * Math.pow(1.5, hostRetry - 1));
+                hostRetryTimer = setTimeout(() => {
+                    hostRetryTimer = null;
+                    if (!recreate && peer && !peer.destroyed && peer.disconnected) { try { peer.reconnect(); return; } catch (e) {} }
+                    try { peer && peer.destroy(); } catch (e) {}
+                    startHostPeer();
+                }, wait);
+            }
+            startHostPeer();
+            window.addEventListener('online', () => { if (peer && (peer.disconnected || peer.destroyed)) { hostRetry = 0; scheduleHostRetry(peer.destroyed); } });
+            // Same-device fallback (second tab / test controller) — always on, costs nothing
+            const busConns = new Map();
+            try {
+                const bus = new BroadcastChannel(`bc3d-${roomCode}`);
+                bus.onmessage = (evt) => {
+                    const data = evt.data; if (!data || data._target !== 'host' || !data.senderId) return;
+                    let vc = busConns.get(data.senderId);
+                    if (!vc) { vc = { local: true, send: (msg) => bus.postMessage({ _target: data.senderId, ...msg }), close: () => busConns.delete(data.senderId) }; busConns.set(data.senderId, vc); }
+                    onPlayerMessage(vc, data);
+                };
+            } catch (e) {}
+
             function findNextAvailableSlot() {
                 const usedSlots = new Set([...activePlayers.values()].map(p => p.slotIndex));
                 for (let i = 0; i < 7; i++) if (!usedSlots.has(i)) return i;
                 return activePlayers.size;
             }
+            function playerRowHTML(p, compact) {
+                const palette = PLAYER_PALETTE[p.slotIndex % PLAYER_PALETTE.length];
+                const status = p.isHost ? '<span class="text-cyan-300">KEYBOARD</span>' : p.connected ? `<span class="${palette.text}">${p.ping != null ? p.ping + 'ms' : 'READY'}</span>` : `<span class="text-orange-400">OFFLINE ${Math.max(0, Math.ceil((PLAYER_GRACE_MS - (performance.now() - p.disconnectedAt)) / 1000))}s</span>`;
+                const stats = inMatch() || gameState === 'OVER' ? `<span class="text-gray-400">♥${Math.max(0, p.lives)} · ${p.kills}K</span>` : '';
+                return `<div class="flex items-center justify-between gap-2 text-xs bg-gray-900/70 p-1.5 rounded border ${p.connected ? 'border-gray-700' : 'border-orange-700/70 opacity-75'}">
+                    <div class="flex items-center gap-2 min-w-0"><img src="${tankThumb(p.slotIndex)}" class="w-9 h-7 shrink-0" alt=""><span class="text-white font-bold truncate">${p.name}</span></div>
+                    <div class="flex items-center gap-2 shrink-0 text-[9px]">${stats}${status}<button class="kick-btn" data-kick="${p.id}" title="Remove player">${p.isHost ? 'OFF' : 'KICK'}</button></div></div>`;
+            }
             function updateLobbyUI() {
-                const listContainer = document.getElementById('connected-players-list');
-                listContainer.innerHTML = '';
-                activePlayers.forEach((p) => {
-                    const palette = PLAYER_PALETTE[p.slotIndex % PLAYER_PALETTE.length];
-                    const item = document.createElement('div');
-                    item.className = "flex items-center justify-between text-xs bg-gray-900/60 p-1.5 rounded border border-gray-700";
-                    item.innerHTML = `<div class="flex items-center gap-2"><span class="w-3 h-3 rounded-full ${palette.tailwind}"></span><span class="text-white font-bold">${p.name}</span></div><span class="${palette.text} text-[10px]">READY</span>`;
-                    listContainer.appendChild(item);
-                });
-                document.getElementById('lobby-count-badge').innerText = `${activePlayers.size}/7 PLAYERS`;
-                document.getElementById('hud-player-count').innerText = `${activePlayers.size} Connected`;
+                const players = [...activePlayers.values()].sort((a, b) => a.slotIndex - b.slotIndex);
+                const html = players.map(p => playerRowHTML(p)).join('') || '<div class="text-[9px] text-gray-500 p-2">Nobody yet — scan the QR with a phone, or turn on HOST PLAYER.</div>';
+                const lobbyList = document.getElementById('connected-players-list');
+                if (lobbyList._html !== html) { lobbyList.innerHTML = html; lobbyList._html = html; }
+                const hudList = document.getElementById('players-hud-list');
+                if (hudList._html !== html) { hudList.innerHTML = html; hudList._html = html; }
+                const online = players.filter(p => p.connected).length;
+                document.getElementById('lobby-count-badge').innerText = `${players.length}/7 PLAYERS`;
+                document.getElementById('hud-player-count').innerText = `${online}/${players.length} Connected`;
+                syncSquad();
             }
-            function broadcastToControllers(msg) {
-                activePlayers.forEach((p) => { if (p.conn && p.conn.send) { try { p.conn.send(msg); } catch (e) {} } });
-            }
+            ['connected-players-list', 'players-hud-list'].forEach(id => document.getElementById(id).addEventListener('click', (e) => {
+                const b = e.target.closest('[data-kick]'); if (!b) return;
+                const p = activePlayers.get(b.dataset.kick); if (!p) return;
+                kickPlayer(p.id);
+            }));
+            // HUD panels (players + join QR) — click to pin, hover to peek
+            [['players-hud-btn', 'players-hud-panel'], ['joinqr-hud-btn', 'joinqr-hud-panel']].forEach(([b, pnl]) => {
+                const btn = document.getElementById(b), panel = document.getElementById(pnl);
+                btn.addEventListener('click', () => { const open = !panel.classList.contains('open'); document.querySelectorAll('.hud-panel').forEach(x => x.classList.remove('open')); panel.classList.toggle('open', open); });
+            });
 
             let simJoyManager = null;
             document.getElementById('toggle-sim-ctrl-btn').addEventListener('click', () => {
+                if (!hostPlays) setHostPlays(true);
                 document.getElementById('sim-controller-overlay').classList.remove('hidden');
                 if (!simJoyManager) {
-                    const hostP = activePlayers.get(hostPlayerId);
+                    const hp = () => activePlayers.get(hostPlayerId);
                     simJoyManager = nipplejs.create({ zone: document.getElementById('sim-joystick-zone'), mode: 'static', position: { left: '50%', top: '50%' }, color: '#06b6d4', size: 80 });
-                    simJoyManager.on('move', (evt, data) => { if (data && data.vector && hostP) { hostP.input.dirX = Math.round(data.vector.x * 100) / 100; hostP.input.dirZ = Math.round(-data.vector.y * 100) / 100; } });
-                    simJoyManager.on('end', () => { if (hostP) { hostP.input.dirX = 0; hostP.input.dirZ = 0; } });
+                    simJoyManager.on('move', (evt, data) => { const h = hp(); if (data && data.vector && h) { h.input.dirX = Math.round(data.vector.x * 100) / 100; h.input.dirZ = Math.round(-data.vector.y * 100) / 100; } });
+                    simJoyManager.on('end', () => { const h = hp(); if (h) { h.input.dirX = 0; h.input.dirZ = 0; } });
                     const simFireBtn = document.getElementById('sim-fire-btn');
-                    simFireBtn.addEventListener('mousedown', () => { if (hostP) hostP.input.shoot = true; });
-                    simFireBtn.addEventListener('mouseup', () => { if (hostP) hostP.input.shoot = false; });
-                    simFireBtn.addEventListener('touchstart', (e) => { e.preventDefault(); if (hostP) hostP.input.shoot = true; });
-                    simFireBtn.addEventListener('touchend', (e) => { e.preventDefault(); if (hostP) hostP.input.shoot = false; });
+                    const setShoot = (v) => { const h = hp(); if (h) h.input.shoot = v; };
+                    simFireBtn.addEventListener('mousedown', () => setShoot(true));
+                    simFireBtn.addEventListener('mouseup', () => setShoot(false));
+                    simFireBtn.addEventListener('touchstart', (e) => { e.preventDefault(); setShoot(true); });
+                    simFireBtn.addEventListener('touchend', (e) => { e.preventDefault(); setShoot(false); });
                 }
             });
             document.getElementById('close-sim-ctrl-btn').addEventListener('click', () => document.getElementById('sim-controller-overlay').classList.add('hidden'));
@@ -1414,7 +1781,7 @@
                 if (t.type === 10) entity.vel.x += 7.5 * delta;
                 if (t.type === 9 && gameState === 'PLAYING') {
                     if (entity.playerObj) damagePlayer(entity.playerObj, 10 * delta);
-                    else if (entity.hp) entity.hp -= 6 * delta;
+                    else if (entity.hp && !entity.isBoss) entity.hp -= 6 * delta;
                 }
             }
 
@@ -1541,6 +1908,7 @@
                     const P = this.playerObj;
                     if (P.hp <= 0) { this.mesh.visible = false; return; }
                     this.mesh.visible = true;
+                    unstick(this, this.radius);
                     if (P.starTimer > 0) P.starTimer -= delta;
                     if (P.laserTimer > 0) P.laserTimer -= delta;
                     if (P.comboTimer > 0) P.comboTimer -= delta; else P.combo = 0;
@@ -1594,6 +1962,7 @@
                     if (P.laserTimer > 0) tags.push('LASER');
                     if (P.starTimer > 0) tags.push('DUAL');
                     if (P.shieldTimer > 0) tags.push('SHIELD');
+                    if (!P.connected && !P.isHost) tags.unshift('📡 OFFLINE');
                     updateNameplate(this.nameplate, P.hp, 100, tags.join(' '));
                 }
                 shoot() {
@@ -1634,7 +2003,7 @@
                     this.hp = 1; this.maxHp = 1; this.speed = ENEMY_SPEED; this.shootInterval = 1.55;
                     if (type === 'fast') { this.speed = ENEMY_SPEED * 1.4; this.shootInterval = 1.0; }
                     else if (type === 'heavy') { this.hp = 3; this.maxHp = 3; this.speed = ENEMY_SPEED * 0.72; this.shootInterval = 1.25; }
-                    else if (type === 'boss') { scale = 1.75; this.hp = 25 + Math.min(40, currentWave * 5); this.maxHp = this.hp; this.speed = ENEMY_SPEED * 0.62; this.shootInterval = 0.8; }
+                    else if (type === 'boss') { scale = 1.75; this.hp = 25 + Math.min(40, currentWave * 5); this.maxHp = this.hp; this.speed = ENEMY_SPEED * 0.42; this.shootInterval = 1.0; }
                     this.scale = scale;
                     this.mesh = new THREE.Group(); this.mesh.position.copy(spawnPos);
                     this.body = createTankMesh(PAINTS[style.paint], scale, true); this.mesh.add(this.body);
@@ -1647,7 +2016,8 @@
                     if (this.isBoss) this.nameplate.userData.extraMul = 1.4;
                     this.nameplate.position.y = 1.75 * scale + 0.1; this.mesh.add(this.nameplate);
                     scene.add(this.mesh);
-                    this.radius = 0.8 * scale; this.rotationAngle = Math.PI; this.body.rotation.y = this.rotationAngle;
+                    this.radius = 0.8 * scale; this.wallR = this.isBoss ? 0.9 : this.radius; this.rotationAngle = Math.PI; this.body.rotation.y = this.rotationAngle;
+                    this.stuckT = 0; this.stuckRef = spawnPos.clone();
                     this.lastShotTime = performance.now() / 1000; this.changeDirTimer = 0; this.swarmOffset = (Math.random() - 0.5) * 0.6;
                     this.vel = new THREE.Vector3(); this.playerObj = null; this.hitFlash = 0; this.flashOn = false; this.dustT = 0;
                     this.flash = this.body.getObjectByName('muzzleFlash'); this.flashTimer = 0;
@@ -1658,7 +2028,7 @@
                     updateNameplate(this.nameplate, this.hp, this.maxHp);
                 }
                 findTargetPosition() {
-                    let closest = null, minD = 22;
+                    let closest = null, minD = this.isBoss ? 30 : 22;
                     activePlayers.forEach((p) => {
                         if (p.tank && p.hp > 0) {
                             const d = this.mesh.position.distanceTo(p.tank.mesh.position);
@@ -1686,6 +2056,16 @@
                     if (this.flash) { this.flashTimer -= delta; this.flash.visible = this.flashTimer > 0; }
                     this.iceShell.visible = freezeTimer > 0;
                     if (freezeTimer > 0) { this.iceShell.rotation.y += delta * 0.6; updateNameplate(this.nameplate, this.hp, this.maxHp); if (this.hp <= 0) this.pendingDestroy = true; return; }
+                    unstick(this, this.wallR);
+                    // Anti-stuck: if barely moved for a while, pick a fresh free direction
+                    this.stuckT += delta;
+                    if (this.stuckT > 1.4) {
+                        if (this.mesh.position.distanceTo(this.stuckRef) < 0.35) {
+                            const opts = [0, Math.PI / 2, Math.PI, -Math.PI / 2].filter(a => !checkWallCollision(this.mesh.position.clone().add(new THREE.Vector3(Math.sin(a) * 1.2, 0, Math.cos(a) * 1.2)), this.wallR, this.isBoss));
+                            if (opts.length) { this.rotationAngle = opts[Math.floor(Math.random() * opts.length)]; this.changeDirTimer = 1.2 + Math.random(); }
+                        }
+                        this.stuckT = 0; this.stuckRef.copy(this.mesh.position);
+                    }
                     this.changeDirTimer -= delta;
                     if (this.changeDirTimer <= 0) {
                         this.changeDirTimer = 0.55 + Math.random() * 0.9;
@@ -1697,7 +2077,7 @@
                         for (let angle of candidateAngles) {
                             const snapAngle = Math.round(angle / (Math.PI / 2)) * (Math.PI / 2);
                             const testPos = this.mesh.position.clone().add(new THREE.Vector3(Math.sin(snapAngle) * 1.5, 0, Math.cos(snapAngle) * 1.5));
-                            if (!checkWallCollision(testPos, this.radius)) { chosenAngle = snapAngle; break; }
+                            if (!checkWallCollision(testPos, this.wallR, this.isBoss)) { chosenAngle = snapAngle; break; }
                         }
                         this.rotationAngle = chosenAngle;
                     }
@@ -1707,7 +2087,12 @@
                     this.vel.set(Math.sin(this.rotationAngle) * this.speed, 0, Math.cos(this.rotationAngle) * this.speed);
                     applySurfaceMotion(this, delta);
                     const newPos = this.mesh.position.clone().add(this.vel.clone().multiplyScalar(delta));
-                    if (!checkWallCollision(newPos, this.radius) && !checkTankOverlap(newPos, this.radius, this)) {
+                    // keep tanks centred in their lane so they slide through 1-cell corridors instead of snagging corners
+                    const lane = tileAtWorld(newPos), laneC = gridToWorld(lane.col, lane.row);
+                    if (Math.abs(Math.sin(this.rotationAngle)) > 0.5) newPos.z += (laneC.z - newPos.z) * Math.min(1, delta * 4);
+                    else newPos.x += (laneC.x - newPos.x) * Math.min(1, delta * 4);
+                    if (this.isBoss) crushBricksAt(newPos, this.wallR + 0.15);
+                    if (!checkWallCollision(newPos, this.wallR) && !checkTankOverlap(newPos, this.radius, this)) {
                         this.mesh.position.copy(newPos);
                         this.body.traverse((c) => { if (c.userData && c.userData.spin) c.rotation.x += this.speed * delta * 2.5; });
                         this.dustT -= delta;
@@ -1719,7 +2104,13 @@
                     if (this.hp <= 0) this.pendingDestroy = true;
                 }
                 shoot() {
-                    const dir = new THREE.Vector3(Math.sin(this.rotationAngle), 0, Math.cos(this.rotationAngle));
+                    let dir = new THREE.Vector3(Math.sin(this.rotationAngle), 0, Math.cos(this.rotationAngle));
+                    if (this.isBoss) { // the Titan aims its turret at the closest pilot
+                        const tp = this.findTargetPosition();
+                        const d = tp.clone().sub(this.mesh.position); d.y = 0;
+                        if (d.lengthSq() > 0.01) dir = d.normalize();
+                        if (this.turret && this.turret !== this.body) this.turret.rotation.y = Math.atan2(dir.x, dir.z) - this.body.rotation.y;
+                    }
                     this.flashTimer = 0.07; audio.playEnemyShoot();
                     if (this.isBoss) {
                         for (let angleOffset of [-0.25, 0, 0.25]) {
@@ -1853,15 +2244,25 @@
                 updateHUD();
             }
             const FORTIFY = [[12,15],[12,16],[12,17],[12,18],[12,19],[12,20],[12,21],[13,15],[13,16],[13,17],[13,19],[13,20],[13,21]];
+            let fortifyPending = [];
             function activateBaseFortify() {
                 fortifyTimer = 15;
-                FORTIFY.forEach(([r,c]) => { if (mapGrid[r]) mapGrid[r][c] = 2; });
+                fortifyPending = [];
+                FORTIFY.forEach(([r,c]) => { if (cellOccupied(c, r)) fortifyPending.push([r, c]); else mapGrid[r][c] = 2; });
                 buildMap();
                 const ep = gridToWorld(EAGLE_C, EAGLE_R);
                 fxBursts.push(new RingPulse(ep, 0xe2e8f0, { from: 0.5, to: 7, life: 0.7 }));
             }
+            function retryFortify() {
+                if (!fortifyPending.length) return;
+                const still = [];
+                fortifyPending.forEach(([r, c]) => { if (cellOccupied(c, r)) still.push([r, c]); else mapGrid[r][c] = 2; });
+                if (still.length !== fortifyPending.length) buildMap();
+                fortifyPending = still;
+            }
             function deactivateBaseFortify() {
-                FORTIFY.forEach(([r,c]) => { if (mapGrid[r]) mapGrid[r][c] = 1; });
+                fortifyPending = [];
+                FORTIFY.forEach(([r,c]) => { mapGrid[r][c] = cellOccupied(c, r) ? 0 : 1; });
                 buildMap();
             }
             let bannerTimer = null;
@@ -1888,11 +2289,12 @@
                         playerObj.tank.mesh.visible = false;
                     }
                     audio.playExplosion(true); audio.playPlayerDown();
+                    sendTo(playerObj, { type: 'sfx', s: 'die', text: playerObj.lives > 0 ? `💥 TANK DOWN · ${playerObj.lives} ♥ LEFT` : '☠ OUT OF LIVES' });
                     if (playerObj.lives > 0) {
                         audio.say(`${playerObj.name.replace(/\(.*\)/, '').trim() || 'Pilot'} down!`, { key: 'pilotdown', cooldown: 2 });
                         setTimeout(() => {
                             if (gameState !== 'PLAYING') return;
-                            playerObj.hp = 100; if (playerObj.tank) { playerObj.tank.resetPosition(); playerObj.tank.mesh.visible = true; }
+                            playerObj.hp = 100; if (playerObj.tank) { playerObj.tank.resetPosition(); playerObj.tank.mesh.visible = true; } sendTo(playerObj, { type: 'sfx', s: 'respawn' });
                         }, 1800);
                     } else {
                         audio.say('Pilot eliminated!', { priority: true });
@@ -1906,6 +2308,7 @@
                 if (gameState !== 'PLAYING') return;
                 baseHp = Math.max(0, baseHp - amount); audio.playHit(); audio.playBaseHit(); updateHUD();
                 eagleFlash = 0.35; screenFlash('red'); shakeAmp = Math.max(shakeAmp, 0.35);
+                if (!damageBase._t || performance.now() - damageBase._t > 2500) { damageBase._t = performance.now(); broadcastToControllers({ type: 'sfx', s: 'base' }); }
                 const ep = gridToWorld(EAGLE_C, EAGLE_R);
                 fxBursts.push(new RingPulse(ep, 0xff3b3b, { from: 0.6, to: 4.5, life: 0.5 }));
                 const box = document.getElementById('base-box');
@@ -1955,7 +2358,41 @@
                     if (rr >= 0 && rr < MAP_ROWS && cc >= 0 && cc < MAP_COLS && mapGrid[rr][cc] === 8 && !(rr === row && cc === col)) explodeBarrel(cc, rr);
                 }
             }
-            function checkWallCollision(pos, radius) {
+            const isFortCell = (c, r) => r >= 11 && c >= 15 && c <= 21;
+            function crushBricksAt(pos, radius) {
+                const minC = Math.floor((pos.x - radius + MAP_OFFSET_X + CELL_SIZE / 2) / CELL_SIZE), maxC = Math.floor((pos.x + radius + MAP_OFFSET_X + CELL_SIZE / 2) / CELL_SIZE);
+                const minR = Math.floor((pos.z - radius + MAP_OFFSET_Z + CELL_SIZE / 2) / CELL_SIZE), maxR = Math.floor((pos.z + radius + MAP_OFFSET_Z + CELL_SIZE / 2) / CELL_SIZE);
+                for (let r = minR; r <= maxR; r++) for (let c = minC; c <= maxC; c++) {
+                    if (r > 0 && r < MAP_ROWS - 1 && c > 0 && c < MAP_COLS - 1 && mapGrid[r][c] === 1 && !isFortCell(c, r)) { destroyBrick(c, r); shakeAmp = Math.max(shakeAmp, 0.3); }
+                }
+            }
+            // Pushes a tank out of a block it ended up inside (gate closing, fortify, respawn...) to the nearest free spot
+            function unstick(entity, radius) {
+                const pos = entity.mesh.position;
+                if (!checkWallCollision(pos, radius)) return;
+                const t = tileAtWorld(pos);
+                let best = null, bestD = 1e9;
+                for (let ring = 0; ring <= 4 && !best; ring++) {
+                    for (let dr = -ring; dr <= ring; dr++) for (let dc = -ring; dc <= ring; dc++) {
+                        if (Math.max(Math.abs(dr), Math.abs(dc)) !== ring) continue;
+                        const c = t.col + dc, r = t.row + dr;
+                        if (r < 1 || r >= MAP_ROWS - 1 || c < 1 || c >= MAP_COLS - 1) continue;
+                        const w = gridToWorld(c, r);
+                        if (checkWallCollision(w, Math.min(radius, 0.95))) continue;
+                        const d = w.distanceTo(pos);
+                        if (d < bestD) { bestD = d; best = w; }
+                    }
+                }
+                if (best) { pos.x = best.x; pos.z = best.z; if (entity.vel) entity.vel.set(0, 0, 0); }
+            }
+            function cellOccupied(c, r) {
+                const w = gridToWorld(c, r), half = CELL_SIZE / 2;
+                const hit = (p, rad) => Math.abs(p.x - w.x) < half + rad && Math.abs(p.z - w.z) < half + rad;
+                for (const p of activePlayers.values()) if (p.tank && p.hp > 0 && hit(p.tank.mesh.position, p.tank.radius * 0.9)) return true;
+                for (const e of enemies) if (hit(e.mesh.position, e.radius * 0.9)) return true;
+                return false;
+            }
+            function checkWallCollision(pos, radius, ignoreCrushable) {
                 const minC = Math.floor((pos.x - radius + MAP_OFFSET_X + CELL_SIZE / 2) / CELL_SIZE);
                 const maxC = Math.floor((pos.x + radius + MAP_OFFSET_X + CELL_SIZE / 2) / CELL_SIZE);
                 const minR = Math.floor((pos.z - radius + MAP_OFFSET_Z + CELL_SIZE / 2) / CELL_SIZE);
@@ -1963,6 +2400,7 @@
                 for (let r = minR; r <= maxR; r++) for (let c = minC; c <= maxC; c++) {
                     if (r < 0 || r >= MAP_ROWS || c < 0 || c >= MAP_COLS) return true;
                     const tile = mapGrid[r][c];
+                    if (tile === 1 && ignoreCrushable && !isFortCell(c, r)) continue;
                     if (tile === 1 || tile === 2 || tile === 3 || tile === 5 || tile === 8) return true;
                 }
                 return false;
@@ -2018,7 +2456,7 @@
                 if (Math.random() < 0.35 && !enemy.isBoss) spawnPowerup(enemy.mesh.position);
                 enemy.destroy();
                 if (ownerPlayer) {
-                    ownerPlayer.kills += 1;
+                    ownerPlayer.kills += 1; sendTo(ownerPlayer, { type: 'sfx', s: 'kill' });
                     ownerPlayer.combo += 1; ownerPlayer.comboTimer = 3.2;
                     score += (ownerPlayer.combo > 1 ? ownerPlayer.combo * 15 : 0);
                     if (COMBO_CALLS[ownerPlayer.combo]) audio.say(COMBO_CALLS[ownerPlayer.combo], { key: 'combo', cooldown: 1.5 });
@@ -2092,6 +2530,9 @@
                 const secs = Math.floor(gameTime % 60).toString().padStart(2, '0');
                 document.getElementById('timer').innerText = `${mins}:${secs}`;
                 const playerHudContainer = document.getElementById('players-hud-bar');
+                const hudKey = [...activePlayers.values()].map(p => [p.id, p.name, p.slotIndex, Math.ceil(p.hp), p.lives, p.connected, p.starTimer > 0, p.laserTimer > 0, p.shieldTimer > 0].join(',')).join('|');
+                if (playerHudContainer._key === hudKey) return;
+                playerHudContainer._key = hudKey;
                 playerHudContainer.innerHTML = '';
                 activePlayers.forEach((p) => {
                     const palette = PLAYER_PALETTE[p.slotIndex % PLAYER_PALETTE.length];
@@ -2102,10 +2543,167 @@
                     const badge = document.createElement('div');
                     badge.className = "bg-gray-900/90 backdrop-blur border-2 rounded-lg px-2.5 py-2 flex items-center gap-2 min-w-[190px]";
                     badge.style.borderColor = palette.css;
-                    badge.innerHTML = `<div class="w-4 h-4 rounded-full ${palette.tailwind} border-2 border-white"></div><div class="flex-1"><div class="text-[11px] font-bold text-white flex justify-between items-center gap-2"><span>${p.name} ${pwrIcons}</span><span class="text-yellow-400">${'♥'.repeat(Math.max(0, p.lives))}</span></div><div class="w-full bg-gray-800 h-2.5 rounded-full overflow-hidden mt-1.5 border border-gray-600"><div class="${p.hp > 35 ? palette.tailwind : 'bg-red-500'} h-full" style="width:${Math.max(0,p.hp)}%"></div></div></div>`;
+                    if (!p.connected && !p.isHost) badge.style.opacity = '0.55';
+                    badge.innerHTML = `<img src="${tankThumb(p.slotIndex)}" class="w-10 h-8" alt=""><div class="flex-1"><div class="text-[11px] font-bold text-white flex justify-between items-center gap-2"><span>${p.name} ${!p.connected && !p.isHost ? '📡' : ''}${pwrIcons}</span><span class="text-yellow-400">${'♥'.repeat(Math.max(0, p.lives))}</span></div><div class="w-full bg-gray-800 h-2.5 rounded-full overflow-hidden mt-1.5 border border-gray-600"><div class="${p.hp > 35 ? palette.tailwind : 'bg-red-500'} h-full" style="width:${Math.max(0,p.hp)}%"></div></div></div>`;
                     playerHudContainer.appendChild(badge);
                 });
             }
+
+
+            // =====================================================================
+            //  TANK THUMBNAILS + SQUAD FORMATION (lobby 3D preview)
+            // =====================================================================
+            const thumbCache = new Map();
+            let thumbRig = null;
+            function tankThumb(slot) {
+                slot = slot % 7;
+                if (thumbCache.has(slot)) return thumbCache.get(slot);
+                try {
+                    if (!thumbRig) {
+                        const r = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+                        r.setSize(144, 108); r.setPixelRatio(1); r.outputEncoding = THREE.sRGBEncoding;
+                        const sc = new THREE.Scene();
+                        sc.add(new THREE.HemisphereLight(C(0xffffff), C(0x445566), 0.9));
+                        const dl = new THREE.DirectionalLight(0xffffff, 0.9); dl.position.set(-3, 6, 4); sc.add(dl);
+                        const cam = new THREE.PerspectiveCamera(30, 144 / 108, 0.1, 50); cam.position.set(3.2, 3.0, 4.2); cam.lookAt(0, 0.55, 0);
+                        thumbRig = { r, sc, cam };
+                    }
+                    const t = createTankMesh({ color: PLAYER_PALETTE[slot].hex, rough: 0.36, metal: 0.25 });
+                    t.rotation.y = 0.5; thumbRig.sc.add(t);
+                    thumbRig.r.render(thumbRig.sc, thumbRig.cam);
+                    const url = thumbRig.r.domElement.toDataURL('image/png');
+                    thumbRig.sc.remove(t);
+                    thumbCache.set(slot, url);
+                    return url;
+                } catch (e) { return ''; }
+            }
+            const squad = { renderer: null, scene: null, cam: null, units: new Map(), ready: false };
+            const FORMATION = [[0, 1.2], [-2.7, -0.4], [2.7, -0.4], [-5.4, -2.0], [5.4, -2.0], [-8.1, -3.6], [8.1, -3.6]];
+            function initSquad() {
+                if (squad.ready) return;
+                const cv = document.getElementById('squad-canvas');
+                try { squad.renderer = new THREE.WebGLRenderer({ canvas: cv, antialias: true, alpha: true }); } catch (e) { return; }
+                squad.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); squad.renderer.outputEncoding = THREE.sRGBEncoding;
+                squad.renderer.shadowMap.enabled = true;
+                const sc = new THREE.Scene();
+                sc.add(new THREE.HemisphereLight(C(0xe4eeff), C(0x2a2f3a), 0.75));
+                const dl = new THREE.DirectionalLight(C(0xfff1dc), 0.9); dl.position.set(-6, 12, 8); dl.castShadow = true; dl.shadow.mapSize.set(1024, 1024);
+                Object.assign(dl.shadow.camera, { left: -12, right: 12, top: 10, bottom: -10 }); dl.shadow.camera.updateProjectionMatrix(); sc.add(dl);
+                const pad = new THREE.Mesh(new THREE.CylinderGeometry(11, 11.4, 0.5, 48), new THREE.MeshStandardMaterial({ map: makeCanvasTexture(128, 128, drawFloorTile, [11, 11]), roughness: 0.95 }));
+                pad.position.set(0, -0.25, -1.5); pad.receiveShadow = true; sc.add(pad);
+                const rimRing = new THREE.Mesh(new THREE.TorusGeometry(11.2, 0.12, 6, 64), glowMat(0xfacc15, 0.7)); rimRing.rotation.x = Math.PI / 2; rimRing.position.set(0, 0.02, -1.5); sc.add(rimRing);
+                squad.cam = new THREE.PerspectiveCamera(34, 2.6, 0.1, 100);
+                squad.cam.position.set(0, 8.2, 13.5); squad.cam.lookAt(0, 0.6, -1.2);
+                squad.scene = sc; squad.ready = true;
+                syncSquad();
+            }
+            function syncSquad() {
+                if (!squad.ready) return;
+                const players = [...activePlayers.values()].sort((a, b) => a.slotIndex - b.slotIndex);
+                const keep = new Set(players.map(p => p.id));
+                squad.units.forEach((u, id) => { if (!keep.has(id)) { squad.scene.remove(u.root); disposeNameplate(u.plate); squad.units.delete(id); } });
+                players.forEach((p, i) => {
+                    let u = squad.units.get(p.id);
+                    const pal = PLAYER_PALETTE[p.slotIndex % 7];
+                    if (!u || u.slot !== p.slotIndex) {
+                        if (u) { squad.scene.remove(u.root); disposeNameplate(u.plate); }
+                        const root = new THREE.Group();
+                        const body = createTankMesh({ color: pal.hex, rough: 0.36, metal: 0.25 }); root.add(body);
+                        root.add(createTeamRing(pal.hex, 1.2));
+                        const plate = createNameplate(p.name, pal.css, 'player'); plate.position.y = 2.1; root.add(plate);
+                        root.position.set(FORMATION[i][0] - 14, 0, FORMATION[i][1]);
+                        squad.scene.add(root);
+                        u = { root, body, plate, slot: p.slotIndex, born: performance.now() };
+                        squad.units.set(p.id, u);
+                    }
+                    u.target = FORMATION[i];
+                    u.player = p;
+                });
+                document.getElementById('squad-empty').style.display = players.length ? 'none' : 'flex';
+            }
+            function renderSquad(delta, t) {
+                if (!squad.ready || document.getElementById('host-lobby').classList.contains('hidden')) return;
+                const cv = squad.renderer.domElement, w = cv.clientWidth, h = cv.clientHeight;
+                if (!w || !h) return;
+                if (cv.width !== Math.floor(w * squad.renderer.getPixelRatio()) || cv.height !== Math.floor(h * squad.renderer.getPixelRatio())) {
+                    squad.renderer.setSize(w, h, false); squad.cam.aspect = w / h; squad.cam.updateProjectionMatrix();
+                }
+                const n = Math.max(1, squad.units.size);
+                const spread = n <= 1 ? 6 : n <= 3 ? 9 : n <= 5 ? 13 : 17;
+                squad.cam.position.set(Math.sin(t * 0.3) * 0.8, 5 + spread * 0.32, 7 + spread * 0.62); squad.cam.lookAt(0, 0.6, -1.4);
+                squad.units.forEach((u) => {
+                    const [tx, tz] = u.target;
+                    const dx = tx - u.root.position.x, dz = tz - u.root.position.z, dist = Math.hypot(dx, dz);
+                    if (dist > 0.05) {
+                        u.root.position.x += dx * Math.min(1, delta * 2.2); u.root.position.z += dz * Math.min(1, delta * 2.2);
+                        u.body.rotation.y = Math.atan2(dx, dz) * Math.min(1, dist) ;
+                        u.body.traverse(c => { if (c.userData.spin) c.rotation.x += delta * 8; });
+                    } else u.body.rotation.y += (0 - u.body.rotation.y) * Math.min(1, delta * 4);
+                    const tur = u.body.userData.turret;
+                    if (tur && tur !== u.body) tur.rotation.y = Math.sin(t * 0.9 + u.slot) * 0.5;
+                    const off = !u.player.connected && !u.player.isHost;
+                    updateNameplate(u.plate, 100, 100, off ? '📡 OFFLINE' : u.player.isHost ? 'HOST' : (u.player.ping != null ? `${u.player.ping}ms` : ''));
+                    u.plate.scale.set(1.25 * 640 / 224, 1.25, 1);
+                    u.root.visible = !off || Math.floor(t * 3) % 2 === 0;
+                });
+                squad.renderer.render(squad.scene, squad.cam);
+            }
+
+            // =====================================================================
+            //  LEADERBOARD — global via Supabase REST (free), local fallback
+            // =====================================================================
+            const lbConfigured = () => !!(SUPABASE_URL && SUPABASE_ANON_KEY && /^https:\/\//.test(SUPABASE_URL));
+            function lbHeaders() { const h = { apikey: SUPABASE_ANON_KEY, 'Content-Type': 'application/json' }; if (!SUPABASE_ANON_KEY.startsWith('sb_')) h.Authorization = 'Bearer ' + SUPABASE_ANON_KEY; return h; }
+            function lbLocal() { try { return JSON.parse(safeStore.get('bc3d_local_scores') || '[]'); } catch (e) { return []; } }
+            function lbSaveLocal(entry) { const all = lbLocal(); all.push(entry); all.sort((a, b) => b.score - a.score); safeStore.set('bc3d_local_scores', JSON.stringify(all.slice(0, 25))); }
+            function lbPending() { try { return JSON.parse(safeStore.get('bc3d_pending_scores') || '[]'); } catch (e) { return []; } }
+            async function lbPost(entry) {
+                const ctrl = new AbortController(); const to = setTimeout(() => ctrl.abort(), 7000);
+                try {
+                    const r = await fetch(`${SUPABASE_URL}/rest/v1/${LEADERBOARD_TABLE}`, { method: 'POST', headers: { ...lbHeaders(), Prefer: 'return=minimal' }, body: JSON.stringify(entry), signal: ctrl.signal });
+                    return r.ok;
+                } catch (e) { return false; } finally { clearTimeout(to); }
+            }
+            async function lbFlushPending() {
+                if (!lbConfigured()) return;
+                const pend = lbPending(); if (!pend.length) return;
+                const left = [];
+                for (const e of pend) if (!(await lbPost(e))) left.push(e);
+                safeStore.set('bc3d_pending_scores', JSON.stringify(left.slice(-20)));
+            }
+            async function lbFetch() {
+                if (!lbConfigured()) return { source: 'local', rows: lbLocal().slice(0, 10) };
+                await lbFlushPending();
+                const ctrl = new AbortController(); const to = setTimeout(() => ctrl.abort(), 7000);
+                try {
+                    const r = await fetch(`${SUPABASE_URL}/rest/v1/${LEADERBOARD_TABLE}?select=squad,players,score,wave,kills,time_s,created_at&order=score.desc&limit=10`, { headers: lbHeaders(), signal: ctrl.signal });
+                    if (!r.ok) throw new Error('http ' + r.status);
+                    return { source: 'global', rows: await r.json() };
+                } catch (e) { return { source: 'local', rows: lbLocal().slice(0, 10), offline: true }; } finally { clearTimeout(to); }
+            }
+            async function lbSubmit(entry) {
+                lbSaveLocal(entry);
+                if (!lbConfigured()) return false;
+                const ok = await lbPost(entry);
+                if (!ok) { const p = lbPending(); p.push(entry); safeStore.set('bc3d_pending_scores', JSON.stringify(p.slice(-20))); }
+                return ok;
+            }
+            function lbRender(listEl, titleEl, data, me) {
+                titleEl.innerText = data.source === 'global' ? '🌎 GLOBAL TOP 10' : data.offline ? '💾 LOCAL TOP 10 (OFFLINE)' : '💾 LOCAL TOP 10';
+                const esc = (x) => String(x).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+                listEl.innerHTML = data.rows.length ? data.rows.map((r, i) => {
+                    const isMe = me && r.score === me.score && r.squad === me.squad && r.wave === me.wave;
+                    const medal = ['🥇', '🥈', '🥉'][i] || `${i + 1}.`;
+                    return `<li class="lb-row ${isMe ? 'me' : ''} flex justify-between gap-2 px-1.5 py-1 rounded bg-gray-900/50"><span class="truncate"><span class="text-yellow-400">${medal}</span> ${esc(r.squad)}</span><span class="shrink-0 text-gray-400">W${r.wave} · <span class="text-green-400">${r.score}</span></span></li>`;
+                }).join('') : '<li class="text-gray-500">No scores yet — be the first squad!</li>';
+            }
+            async function refreshLobbyLeaderboard() {
+                const data = await lbFetch();
+                lbRender(document.getElementById('leaderboard-list'), document.getElementById('lb-title'), data);
+            }
+            document.getElementById('lb-refresh').addEventListener('click', refreshLobbyLeaderboard);
+            refreshLobbyLeaderboard();
+            initSquad();
 
             // =====================================================================
             //  INTRO CINEMATIC  ("DEFEND YOUR BASE", side view, tanks roll left -> right)
@@ -2331,9 +2929,10 @@
             }
             function startGame() {
                 gameTime = 0; currentWave = 1; waveKills = 0; killsToNextWave = 10; score = 0; totalKills = 0; baseHp = 100; freezeTimer = 0; fortifyTimer = 0; bossRef = null;
-                mapGrid = JSON.parse(JSON.stringify(initialMapGrid)); buildMap();
+                mapGrid = JSON.parse(JSON.stringify(initialMapGrid)); fortifyPending = []; gateOpen = true; gateTimer = 0; buildMap();
                 if (eagleMesh) { eagleMesh.visible = true; eagleAura.visible = true; }
                 clearWorld();
+                document.querySelectorAll('.hud-panel').forEach(x => x.classList.remove('open'));
                 activePlayers.forEach((p) => { p.lives = 3; p.starTimer = 0; p.laserTimer = 0; p.shieldTimer = 0; p.combo = 0; p.kills = 0; spawnPlayerTank(p); });
                 document.getElementById('host-lobby').classList.add('hidden');
                 document.getElementById('gameover-screen').classList.add('hidden');
@@ -2357,6 +2956,22 @@
                 document.getElementById('end-time').innerText = `${Math.floor(elapsed / 60).toString().padStart(2,'0')}:${Math.floor(elapsed % 60).toString().padStart(2,'0')}`;
                 document.getElementById('end-kills').innerText = totalKills;
                 document.getElementById('end-score').innerText = score;
+                document.getElementById('end-wave').innerText = currentWave;
+                broadcastToControllers({ type: 'sfx', s: 'over' });
+                const pilots = [...activePlayers.values()].sort((a, b) => b.kills - a.kills);
+                document.getElementById('end-pilots').innerHTML = pilots.map(p => `<div class="flex items-center justify-between gap-2"><span class="flex items-center gap-1"><img src="${tankThumb(p.slotIndex)}" class="w-7 h-5" alt="">${p.name}</span><span class="text-red-300">${p.kills} KILLS</span></div>`).join('');
+                const entry = { squad: (pilots.map(p => p.name).join(' · ') || 'NO PILOTS').slice(0, 60), players: Math.max(1, Math.min(7, pilots.length)), score, wave: currentWave, kills: totalKills, time_s: Math.floor(gameTime) };
+                const rankEl = document.getElementById('end-rank'); rankEl.innerText = 'SAVING SCORE…';
+                const listEnd = document.getElementById('leaderboard-end'), titleEnd = document.getElementById('lb-title-end');
+                (async () => {
+                    if (score > 0) await lbSubmit(entry);
+                    const data = await lbFetch();
+                    lbRender(listEnd, titleEnd, data, entry);
+                    lbRender(document.getElementById('leaderboard-list'), document.getElementById('lb-title'), data);
+                    const idx = data.rows.findIndex(r => r.score === entry.score && r.squad === entry.squad && r.wave === entry.wave);
+                    rankEl.innerText = score <= 0 ? '' : idx === 0 ? '🏆 NEW #1 HIGH SCORE!' : idx > 0 ? `🎖 RANK #${idx + 1} ${data.source === 'global' ? 'WORLDWIDE' : 'ON THIS PC'}` : 'NOT IN THE TOP 10 · TRY AGAIN!';
+                    if (idx === 0 && score > 0) audio.say('New high score!', { priority: true });
+                })();
                 setTimeout(() => {
                     if (gameState !== 'OVER') return;
                     document.getElementById('hud').classList.add('hidden');
@@ -2364,12 +2979,16 @@
                     document.getElementById('gameover-screen').classList.remove('hidden');
                 }, 1400);
             }
-            document.getElementById('start-btn').addEventListener('click', () => { audio.init(); startGame(); });
+            document.getElementById('start-btn').addEventListener('click', () => {
+                audio.init();
+                if (!activePlayers.size) { toast('NO PILOTS YET · SCAN THE QR OR TURN ON HOST PLAYER', '#f87171'); audio.playHit(); return; }
+                startGame();
+            });
             document.getElementById('restart-btn').addEventListener('click', () => {
                 document.getElementById('gameover-screen').classList.add('hidden');
                 document.getElementById('host-lobby').classList.remove('hidden');
                 gameState = 'LOBBY';
-                clearWorld();
+                clearWorld(); refreshLobbyLeaderboard();
                 activePlayers.forEach((p) => { if (p.tank) { p.tank.dispose(); p.tank = null; } });
                 mapGrid = JSON.parse(JSON.stringify(initialMapGrid)); buildMap();
                 if (eagleMesh) { eagleMesh.visible = true; eagleAura.visible = true; }
@@ -2418,6 +3037,7 @@
                     if (s.userData.life <= 0) { scene.remove(s); s.material.dispose(); scorches.splice(i, 1); }
                 }
                 gateTimer += delta;
+                if (gateTimer > 4.5 && gateOpen && cellOccupied(GATE_C, GATE_R)) gateTimer = 4.2;
                 if (gateTimer > 4.5) {
                     gateTimer = 0; gateOpen = !gateOpen;
                     const r = GATE_R, c = GATE_C;
@@ -2488,6 +3108,7 @@
                 }
                 animateWorld(delta, t);
                 updateCamera(delta, t);
+                if (gameState === 'LOBBY') renderSquad(delta, t);
 
                 if (gameState === 'COUNTDOWN') {
                     updateCountdown(delta);
@@ -2499,6 +3120,7 @@
                         currentWave += 1; waveKills = 0; killsToNextWave = 10 + currentWave * 4;
                         showPowerupBanner('⚡', `WAVE ${currentWave} STARTED!`, '#facc15');
                         audio.playWaveStart(); audio.say(`Wave ${currentWave}!`, { priority: true });
+                        broadcastToControllers({ type: 'sfx', s: 'wave', text: `⚡ WAVE ${currentWave}` });
                     }
                     if (currentWave % 3 === 0 && !bossRef && enemies.filter(e => e.isBoss).length === 0) {
                         bossRef = new EnemyTankEntity(gridToWorld(18, 1), 'boss');
@@ -2506,9 +3128,10 @@
                         document.getElementById('boss-hp-container').classList.remove('hidden');
                         updateBossHP(bossRef.hp); audio.playBossSiren(); showPowerupBanner('⚠️', 'TITAN BOSS SPAWNED!', '#f87171');
                         audio.say('Warning! Titan tank approaching!', { priority: true }); screenFlash('red');
+                        broadcastToControllers({ type: 'sfx', s: 'boss', text: '⚠ TITAN BOSS!' });
                     }
                     if (freezeTimer > 0) freezeTimer -= delta;
-                    if (fortifyTimer > 0) { fortifyTimer -= delta; if (fortifyTimer <= 0) deactivateBaseFortify(); }
+                    if (fortifyTimer > 0) { fortifyTimer -= delta; if (fortifyTimer <= 0) deactivateBaseFortify(); else if (fortifyPending.length && Math.floor(gameTime * 2) !== Math.floor((gameTime - delta) * 2)) retryFortify(); }
                     hudTimer -= delta;
                     if (hudTimer <= 0) { hudTimer = 0.1; updateHUD(); }
                     spawnTimer += delta;
