@@ -8,15 +8,16 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="format-detection" content="telephone=no">
     <title>Battle City Low Poly - Phase 5 Defend The Eagle</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/OBJLoader.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
-    <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/nipplejs/0.10.1/nipplejs.min.js"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+    <!-- All libraries are bundled in ./vendor so the game works even when school proxies block CDNs -->
+    <link rel="stylesheet" href="vendor/tailwind.css">
+    <script src="vendor/three.min.js"></script>
+    <script src="vendor/OBJLoader.js"></script>
+    <script src="vendor/GLTFLoader.js"></script>
+    <script src="vendor/peerjs.min.js"></script>
+    <script src="vendor/qrcode.min.js"></script>
+    <script src="vendor/nipplejs.min.js"></script>
     <style>
+        @font-face { font-family: 'Press Start 2P'; font-style: normal; font-weight: 400; font-display: swap; src: url('vendor/press-start-2p-latin-400-normal.woff2') format('woff2'); }
         * { box-sizing: border-box; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
         body, html {
             margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden;
@@ -501,6 +502,102 @@
             { urls: 'stun:global.stun.twilio.com:3478' }
         ];
         const PEER_OPTS = { debug: 0, config: { iceServers: ICE_SERVERS, iceCandidatePoolSize: 4 } };
+        // Own relay server (Render, free plan). Leave '' when the game itself is served by that server
+        // (it is then detected automatically). If you keep the game on GitHub Pages, put the Render URL here,
+        // e.g. 'https://battlecity-relay.onrender.com'. With no relay, the game falls back to PeerJS/WebRTC.
+        const RELAY_URL = '';
+        const RELAY_BASE = (RELAY_URL || ((location.protocol === 'https:' || location.protocol === 'http:') && !/github\.io$/i.test(location.hostname) ? location.origin : '')).replace(/\/+$/, '');
+
+        // ---------------------------------------------------------------------
+        //  RelayClient: WebSocket to our own server, auto-falls back to HTTP long-polling
+        //  (both over normal HTTPS/443, so school proxies and mobile-data NAT don't matter)
+        // ---------------------------------------------------------------------
+        class RelayClient {
+            constructor(base, params, h) {
+                this.base = base; this.params = new URLSearchParams(params).toString(); this.h = h;
+                this.mode = 'none'; this.open = false; this.ws = null; this.closed = false; this.retry = 0; this.wsFails = 0;
+                this.outbox = []; this.pollAbort = null; this.flushTimer = null;
+                if (/[?&]poll=1/.test(location.search)) this.wsFails = 2; // diagnostics: force HTTPS polling
+            }
+            async start() { this.closed = false; await this.wake(); this.connect(); }
+            async wake() {
+                // Render free instances sleep when idle: ping /health until it answers (cold start ~30-60 s)
+                for (let i = 0; i < 40 && !this.closed; i++) {
+                    try { const r = await fetch(`${this.base}/health`, { cache: 'no-store' }); if (r.ok) return true; } catch (e) {}
+                    this.h.status && this.h.status('waking', i);
+                    await new Promise(r => setTimeout(r, Math.min(4000, 1500 + i * 250)));
+                }
+                return false;
+            }
+            connect() {
+                if (this.closed) return;
+                if (this.wsFails >= 2 || typeof WebSocket === 'undefined') return this.startPolling();
+                let ws, opened = false;
+                try { ws = new WebSocket(`${this.base.replace(/^http/, 'ws')}/ws?${this.params}`); } catch (e) { this.wsFails++; return this.later(); }
+                this.ws = ws;
+                const guard = setTimeout(() => { if (!opened) { try { ws.close(); } catch (e) {} } }, 7000);
+                ws.onopen = () => { opened = true; clearTimeout(guard); this.ws = ws; this.mode = 'ws'; this.retry = 0; this.wsFails = 0; this.setOpen(true); };
+                ws.onmessage = (e) => { try { const m = JSON.parse(e.data); (Array.isArray(m) ? m : [m]).forEach(x => this.h.message(x)); } catch (err) {} };
+                ws.onclose = () => { clearTimeout(guard); if (this.ws !== ws) return; this.ws = null; if (!opened) this.wsFails++; this.setOpen(false); this.later(); };
+                ws.onerror = () => {};
+            }
+            startPolling() {
+                if (this.closed) return;
+                this.mode = 'poll'; this.setOpen(true); this.retry = 0;
+                const loop = async () => {
+                    while (!this.closed && this.mode === 'poll') {
+                        try {
+                            this.pollAbort = new AbortController();
+                            const t = setTimeout(() => this.pollAbort.abort(), 26000);
+                            const r = await fetch(`${this.base}/poll?${this.params}&_=${Date.now()}`, { cache: 'no-store', signal: this.pollAbort.signal });
+                            clearTimeout(t);
+                            if (!r.ok) throw new Error('poll ' + r.status);
+                            const msgs = await r.json();
+                            if (!this.open) this.setOpen(true);
+                            msgs.forEach(x => this.h.message(x));
+                        } catch (e) {
+                            if (this.closed) return;
+                            this.setOpen(false);
+                            await new Promise(r => setTimeout(r, Math.min(6000, 800 * ++this.retry)));
+                        }
+                    }
+                };
+                loop();
+                // every few minutes, try to upgrade back to WebSocket
+                setTimeout(() => { if (!this.closed && this.mode === 'poll') { this.wsFails = 0; } }, 180000);
+            }
+            later() {
+                if (this.closed) return;
+                const wait = Math.min(8000, 600 * Math.pow(1.6, this.retry++));
+                this.h.status && this.h.status('retry', this.retry, wait);
+                setTimeout(() => this.connect(), wait);
+            }
+            setOpen(v) { if (this.open === v) return; this.open = v; this.h.state && this.h.state(v, this.mode); }
+            send(obj) {
+                if (this.closed) return false;
+                if (this.mode === 'ws' && this.ws && this.ws.readyState === 1) {
+                    if (obj && obj.type === 'input' && this.ws.bufferedAmount > 32000) return false; // slow link: drop stale input
+                    try { this.ws.send(JSON.stringify(obj)); return true; } catch (e) { return false; }
+                }
+                if (this.mode === 'poll') {
+                    if (obj && obj.type === 'input') this.outbox = this.outbox.filter(m => !(m && m.type === 'input')); // only latest input matters
+                    if (obj && obj.d && obj.d.type === 'pong') this.outbox = this.outbox.filter(m => !(m.d && m.d.type === 'pong' && m.to === obj.to));
+                    this.outbox.push(obj);
+                    if (!this.flushTimer) this.flushTimer = setTimeout(() => this.flush(), 70);
+                    return true;
+                }
+                return false;
+            }
+            async flush() {
+                this.flushTimer = null;
+                if (!this.outbox.length || this.closed) return;
+                const batch = this.outbox.splice(0, 60);
+                try { await fetch(`${this.base}/rpc?${this.params}`, { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify(batch), cache: 'no-store' }); }
+                catch (e) { this.outbox.unshift(...batch.filter(m => !(m && m.type === 'input'))); }
+                if (this.outbox.length && !this.flushTimer) this.flushTimer = setTimeout(() => this.flush(), 70);
+            }
+            stop() { this.closed = true; this.mode = 'none'; try { this.ws && this.ws.close(); } catch (e) {} try { this.pollAbort && this.pollAbort.abort(); } catch (e) {} this.setOpen(false); }
+        }
         const PLAYER_GRACE_MS = 60000;   // a disconnected pilot keeps tank, lives and score this long
         const safeStore = {
             get(k, s = localStorage) { try { return s.getItem(k); } catch (e) { return null; } },
@@ -604,9 +701,10 @@
             });
             window.addEventListener('online', () => { if (joined && !kicked && !isOpen()) { retry = 0; clearTimeout(retryTimer); retryTimer = null; connect(true); } });
 
-            function isOpen() { return (transport === 'webrtc' && conn && conn.open) || transport === 'local'; }
+            function isOpen() { return (transport === 'webrtc' && conn && conn.open) || transport === 'local' || (transport === 'relay' && relay && relay.open); }
             function send(msg) {
                 try {
+                    if (transport === 'relay' && relay) { relay.send(msg); return; }
                     if (transport === 'webrtc' && conn && conn.open) {
                         const dc = conn.dataChannel;
                         if (msg.type === 'input' && dc && dc.bufferedAmount > 24000) return; // slow link: drop stale input instead of queueing lag
@@ -614,8 +712,39 @@
                     } else if (transport === 'local' && bus) bus.postMessage({ _target: 'host', senderId: cid, ...msg });
                 } catch (e) {}
             }
+            // ---------- Preferred path: our own relay server (WebSocket / HTTPS polling) ----------
+            let relay = null;
+            function startRelay() {
+                if (relay) return;
+                setupLocalBus();
+                setStatus('CONNECTING TO SERVER...', 'yellow');
+                relay = new RelayClient(RELAY_BASE, { room: roomCode, role: 'player', cid }, {
+                    message: (m) => {
+                        if (m.sys) {
+                            if (m.sys === 'nohost') { setStatus('WAITING FOR THE HOST SCREEN…', 'orange'); if (everConnected) showConnOverlay(true, 'The host screen is offline.\nWaiting for it to come back…'); }
+                            else if (m.sys === 'hostup' || m.sys === 'hello') send({ type: 'hello', cid, name: nickname });
+                            return;
+                        }
+                        lastHostMsg = performance.now();
+                        if (!everConnected || !loopsStarted) { everConnected = true; setupJoystick(); startLoops(); }
+                        if (statusText.innerText.indexOf('CONNECTED') !== 0) { setStatus(relay.mode === 'poll' ? 'CONNECTED (HTTPS)' : 'CONNECTED', 'green'); showConnOverlay(false); }
+                        handleHostMessage(m);
+                    },
+                    state: (open) => {
+                        if (open) { transport = 'relay'; send({ type: 'hello', cid, name: nickname }); }
+                        else if (!kicked) { pingMs = null; renderPing(); setStatus('SERVER LINK LOST · RECONNECTING', 'orange'); if (everConnected) showConnOverlay(true, 'Reconnecting to the server…\nYour tank is kept for 60 s'); }
+                    },
+                    status: (kind, n, wait) => {
+                        if (kind === 'waking') setStatus(`WAKING UP SERVER… (${n + 1})`, 'yellow');
+                        if (kind === 'retry') setStatus(`RECONNECTING IN ${Math.ceil(wait / 1000)}s`, 'orange');
+                    }
+                });
+                transport = 'relay';
+                relay.start();
+            }
             function connect(force) {
                 if (kicked || !joined) return;
+                if (RELAY_BASE) { if (force && relay) { relay.stop(); relay = null; } startRelay(); return; }
                 clearTimeout(connectTimer);
                 setupLocalBus(); // same-device fallback (host + controller in one browser) — harmless elsewhere
                 setStatus(retry ? `RECONNECTING (${retry})...` : 'CONNECTING...', retry ? 'orange' : 'yellow');
@@ -658,7 +787,7 @@
                     bus = new BroadcastChannel(`bc3d-${roomCode}`);
                     bus.onmessage = (evt) => {
                         if (!evt.data || evt.data._target !== cid) return;
-                        if (transport !== 'webrtc') { transport = 'local'; everConnected = true; setStatus('CONNECTED (LOCAL BUS)', 'yellow'); showConnOverlay(false); setupJoystick(); startLoops(); }
+                        if (transport !== 'webrtc' && !(transport === 'relay' && relay && relay.open)) { transport = 'local'; everConnected = true; setStatus('CONNECTED (LOCAL BUS)', 'yellow'); showConnOverlay(false); setupJoystick(); startLoops(); }
                         handleHostMessage(evt.data);
                     };
                     bus.postMessage({ _target: 'host', type: 'hello', senderId: cid, cid, name: nickname });
@@ -702,7 +831,8 @@
                     if (navigator.vibrate) navigator.vibrate([60, 60, 60]);
                 } else if (data.type === 'kicked' || data.type === 'full') {
                     kicked = true; joined = false; clearTimeout(retryTimer); clearTimeout(connectTimer);
-                    try { if (conn) conn.close(); if (peer) peer.destroy(); } catch (e) {}
+                    try { if (conn) conn.close(); if (peer) peer.destroy(); if (relay) relay.stop(); } catch (e) {}
+                    relay = null;
                     conn = null; peer = null; transport = 'none'; showConnOverlay(false);
                     overlay.classList.remove('hidden');
                     document.getElementById('ctrl-join-msg').innerText = data.type === 'full' ? 'ROOM IS FULL (7/7)' : 'YOU WERE REMOVED BY THE HOST';
@@ -724,6 +854,7 @@
                 setInterval(() => {
                     if (!isOpen()) return;
                     send({ type: 'ping', t: performance.now(), ms: pingMs == null ? null : Math.round(pingMs) });
+                    if (transport === 'relay' && performance.now() - lastHostMsg > 6000) send({ type: 'hello', cid, name: nickname });
                     if (transport === 'local' && bus && performance.now() - lastHostMsg > 6000) bus.postMessage({ _target: 'host', type: 'hello', senderId: cid, cid, name: nickname });
                     if (transport === 'webrtc' && performance.now() - lastHostMsg > 9000) { try { conn && conn.close(); } catch (e) {} conn = null; transport = 'none'; onLost('HOST SILENT'); }
                 }, 2000);
@@ -912,8 +1043,28 @@
                     startHostPeer();
                 }, wait);
             }
-            startHostPeer();
-            window.addEventListener('online', () => { if (peer && (peer.disconnected || peer.destroyed)) { hostRetry = 0; scheduleHostRetry(peer.destroyed); } });
+            // Own relay server first (works behind proxies and on mobile data); PeerJS only when there is no relay
+            let hostRelay = null;
+            const relayConns = new Map();
+            function relayVC(cid) {
+                let vc = relayConns.get(cid);
+                if (!vc) { vc = { relay: true, cid, send: (msg) => hostRelay && hostRelay.send({ to: cid, d: msg }), close: () => { relayConns.delete(cid); hostRelay && hostRelay.send({ sys: 'drop', cid }); } }; relayConns.set(cid, vc); }
+                return vc;
+            }
+            if (RELAY_BASE) {
+                setNet('CONNECTING TO SERVER…', 'yellow');
+                hostRelay = new RelayClient(RELAY_BASE, { room: roomCode, role: 'host' }, {
+                    message: (m) => {
+                        if (m.from) onPlayerMessage(relayVC(m.from), m.d);
+                        else if (m.sys === 'leave') { const p = activePlayers.get(m.cid); if (p && p.conn && p.conn.relay) markDisconnected(p); }
+                        else if (m.sys === 'replaced') { setNet('ROOM OPENED IN ANOTHER TAB', 'red'); hostRelay.stop(); }
+                    },
+                    state: (open, mode) => setNet(open ? (mode === 'poll' ? 'SERVER ONLINE (HTTPS)' : 'SERVER ONLINE') : 'SERVER LINK LOST · RECONNECTING', open ? 'green' : 'orange'),
+                    status: (kind, n) => { if (kind === 'waking') setNet(`WAKING UP SERVER… (${n + 1})`, 'yellow'); }
+                });
+                hostRelay.start();
+            } else startHostPeer();
+            window.addEventListener('online', () => { if (!hostRelay && peer && (peer.disconnected || peer.destroyed)) { hostRetry = 0; scheduleHostRetry(peer.destroyed); } });
             // Same-device fallback (second tab / test controller) — always on, costs nothing
             const busConns = new Map();
             try {
