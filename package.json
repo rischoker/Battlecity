@@ -1,9 +1,9 @@
 {
-  "name": "battlecity-relay",
-  "version": "1.0.0",
-  "description": "Battle City 3D: serves the game and relays host <-> phone messages over WebSocket (with HTTP polling fallback). Free-tier friendly (Render).",
+  "name": "battlecity-3d",
+  "version": "2.0.0",
+  "description": "Battle City 3D — host screen + phone controllers. Express serves the game, Socket.IO relays host <-> phones (Render free Web Service).",
   "main": "server.js",
   "scripts": { "start": "node server.js" },
   "engines": { "node": ">=18" },
-  "dependencies": { "ws": "^8.18.0" }
+  "dependencies": { "express": "^4.21.2", "socket.io": "^4.8.1" }
 }
